@@ -313,22 +313,24 @@ def train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, din
                     fp16_scaler, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
-    for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    #for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    for it, (images, _) in enumerate(mp_device_loader):
         # update weight decay and learning rate according to their schedule
-        it = len(data_loader) * epoch + it  # global training iteration
+        it = len(mp_device_loader) * epoch + it  # global training iteration
         for i, param_group in enumerate(optimizer.param_groups):
             param_group["lr"] = lr_schedule[it]
             if i == 0:  # only the first group is regularized
                 param_group["weight_decay"] = wd_schedule[it]
 
         # move images to gpu
-        images = [im.cuda(non_blocking=True) for im in images]
+        #images = [im.cuda(non_blocking=True) for im in images]
         # teacher and student forward passes + compute dino loss
-        with torch.cuda.amp.autocast(fp16_scaler is not None):
-            teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
-            student_output = student(images)
-            loss = dino_loss(student_output, teacher_output, epoch)
-
+        #with torch.cuda.amp.autocast(fp16_scaler is not None):
+        
+        teacher_output = teacher(images[:2])
+        student_output = student(images)
+        loss = dino_loss(student_output, teacher_output, epoch)
+        
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
             sys.exit(1)
@@ -360,7 +362,9 @@ def train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, din
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
 
         # logging
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
+        xm.optimizer_step(optimizer)
+
         metric_logger.update(loss=loss.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
@@ -478,4 +482,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DINO', parents=[get_args_parser()])
     args = parser.parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    train_dino(args)
+    #train_dino(args)
+    xmp.spawn(train_dino, nprocs= ,args=(args))
