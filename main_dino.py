@@ -34,6 +34,10 @@ import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
 
+import torch_xla.core.xla_model as xm
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.distributed.xla_multiprocessing as xmp
+
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(torchvision_models.__dict__[name]))
@@ -135,6 +139,7 @@ def train_dino(args):
     print("git:\n  {}\n".format(utils.get_sha()))
     print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
     cudnn.benchmark = True
+    xla = True
 
     # ============ preparing data ... ============
     transform = DataAugmentationDINO(
@@ -190,27 +195,33 @@ def train_dino(args):
         teacher,
         DINOHead(embed_dim, args.out_dim, args.use_bn_in_head),
     )
-    # move networks to gpu
-    student, teacher = student.cuda(), teacher.cuda()
-    # synchronize batch norms (if any)
-    if utils.has_batchnorms(student):
-        student = nn.SyncBatchNorm.convert_sync_batchnorm(student)
-        teacher = nn.SyncBatchNorm.convert_sync_batchnorm(teacher)
+    if xla:
+        device = xm.xla_device()
+        student, teacher = student.to(device), teacherto(device)
+        mp_device_loader = pl.MpDeviceLoader(data_loader, device)
 
-        # we need DDP wrapper to have synchro batch norms working...
-        teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
-        teacher_without_ddp = teacher.module
     else:
-        # teacher_without_ddp and teacher are the same thing
-        teacher_without_ddp = teacher
-    student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
-    # teacher and student start with the same weights
-    teacher_without_ddp.load_state_dict(student.module.state_dict())
-    # there is no backpropagation through the teacher, so no need for gradients
-    for p in teacher.parameters():
-        p.requires_grad = False
-    print(f"Student and Teacher are built: they are both {args.arch} network.")
+        # move networks to gpu
+        student, teacher = student.cuda(), teacher.cuda()
+        # synchronize batch norms (if any)
+        if utils.has_batchnorms(student):
+            student = nn.SyncBatchNorm.convert_sync_batchnorm(student)
+            teacher = nn.SyncBatchNorm.convert_sync_batchnorm(teacher)
 
+            # we need DDP wrapper to have synchro batch norms working...
+            teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
+            teacher_without_ddp = teacher.module
+        else:
+            # teacher_without_ddp and teacher are the same thing
+            teacher_without_ddp = teacher
+        student = nn.parallel.DistributedDataParallel(student, device_ids=[args.gpu])
+        # teacher and student start with the same weights
+        teacher_without_ddp.load_state_dict(student.module.state_dict())
+        # there is no backpropagation through the teacher, so no need for gradients
+        for p in teacher.parameters():
+            p.requires_grad = False
+        print(f"Student and Teacher are built: they are both {args.arch} network.")
+    
     # ============ preparing loss ... ============
     dino_loss = DINOLoss(
         args.out_dim,
@@ -268,9 +279,8 @@ def train_dino(args):
     print("Starting DINO training !")
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
-
         # ============ training one epoch of DINO ... ============
-        train_stats = train_one_epoch(student, teacher, teacher_without_ddp, dino_loss,
+        train_stats = train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, dino_loss,
             data_loader, optimizer, lr_schedule, wd_schedule, momentum_schedule,
             epoch, fp16_scaler, args)
 
@@ -289,7 +299,7 @@ def train_dino(args):
         if args.saveckp_freq and epoch % args.saveckp_freq == 0:
             utils.save_on_master(save_dict, os.path.join(args.output_dir, f'checkpoint{epoch:04}.pth'))
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                     'epoch': epoch}
+                    'epoch': epoch}
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
@@ -298,7 +308,7 @@ def train_dino(args):
     print('Training time {}'.format(total_time_str))
 
 
-def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loader,
+def train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, dino_loss, data_loader,
                     optimizer, lr_schedule, wd_schedule, momentum_schedule,epoch,
                     fp16_scaler, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
