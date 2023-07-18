@@ -147,7 +147,7 @@ def train_dino(args):
         args.local_crops_scale,
         args.local_crops_number,
     )
-    dataset = datasets.ImageFolder(args.data_path, transform=transform)
+    dataset = datasets.ImageFolder(args.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
@@ -265,10 +265,7 @@ def train_dino(args):
     # ============ optionally resume training ... ============
     to_restore = {"epoch": 0}
     utils.restart_from_checkpoint(
-        os.path.join(args.output_dir, "checkpoint.pth"),
-        run_variables=to_restore,
-        student=student,
-        teacher=teacher,
+        os.path.join(args.output_dir, "checkpoint.pth"),transform
         optimizer=optimizer,
         fp16_scaler=fp16_scaler,
         dino_loss=dino_loss,
@@ -303,7 +300,7 @@ def train_dino(args):
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
-    total_time = time.time() - start_time
+    total_time = time.time() - start_timetransform
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
@@ -360,7 +357,7 @@ def train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, din
             m = momentum_schedule[it]  # momentum parameter
             for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-
+transform
         # logging
         #torch.cuda.synchronize()
         xm.optimizer_step(optimizer)
