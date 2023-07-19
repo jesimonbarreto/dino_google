@@ -357,7 +357,6 @@ def train_one_epoch(student, teacher, mp_device_loader, teacher_without_ddp, din
             m = momentum_schedule[it]  # momentum parameter
             for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-transform
         # logging
         #torch.cuda.synchronize()
         xm.optimizer_step(optimizer)
