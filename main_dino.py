@@ -479,4 +479,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     #train_dino(args)
-    xmp.spawn(train_dino, nprocs= ,args=(args))
+    xmp.spawn(train_dino, args=(args))
