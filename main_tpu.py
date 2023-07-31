@@ -227,6 +227,7 @@ FLAGS = args_parse.parse_common_options(
     num_workers=None,
     dist_url=None,
     local_rank=None,
+    fp16_scaler=None,
     opts=MODEL_OPTS.items(),
 )
 
@@ -255,7 +256,6 @@ DEFAULT_KWARGS = dict(
     num_workers=8,
     output_dir="./",
     saveckp_freq=20,
-    num_workers=10,
     dist_url="env://",
     local_rank="local_rank",
     host_to_device_transfer_threads=1,
@@ -302,286 +302,319 @@ MODEL_SPECIFIC_DEFAULTS = {
 # Set any args that were not explicitly given by the user.
 default_value_dict = MODEL_SPECIFIC_DEFAULTS.get(FLAGS.model, DEFAULT_KWARGS)
 for arg, value in default_value_dict.items():
-  if getattr(FLAGS, arg) is None:
-    setattr(FLAGS, arg, value)
+    if getattr(FLAGS, arg) is None:
+        setattr(FLAGS, arg, value)
 
 
 def get_model_property(key):
-  default_model_property = {
-      'img_dim': 224,
-      'model_fn': getattr(torchvision.models, FLAGS.model)
-  }
-  model_properties = {
-      'inception_v3': {
-          'img_dim': 299,
-          'model_fn': lambda: torchvision.models.inception_v3(aux_logits=False)
-      },
-  }
-  model_fn = model_properties.get(FLAGS.model, default_model_property)[key]
-  return model_fn
+    default_model_property = {
+        'img_dim': 224,
+        'model_fn': getattr(torchvision.models, FLAGS.model)
+    }
+    model_properties = {
+        'inception_v3': {
+        'img_dim': 299,
+        'model_fn': lambda: torchvision.models.inception_v3(aux_logits=False)
+        },
+    }
+    model_fn = model_properties.get(FLAGS.model, default_model_property)[key]
+    return model_fn
 
 
 def _train_update(device, step, loss, tracker, epoch, writer):
-  test_utils.print_training_update(
-      device,
-      step,
-      loss.item(),
-      tracker.rate(),
-      tracker.global_rate(),
-      epoch,
-      summary_writer=writer)
-
+    test_utils.print_training_update(
+        device,
+        step,
+        loss.item(),
+        tracker.rate(),
+        tracker.global_rate(),
+        epoch,
+        summary_writer=writer)
 
 def train_imagenet():
-  if FLAGS.pjrt_distributed:
-    import torch_xla.experimental.pjrt_backend
-    dist.init_process_group('xla', init_method='pjrt://')
-  elif FLAGS.ddp:
-    dist.init_process_group(
-        'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
+    if FLAGS.pjrt_distributed:
+        import torch_xla.experimental.pjrt_backend
+        dist.init_process_group('xla', init_method='pjrt://')
+    elif FLAGS.ddp:
+        dist.init_process_group(
+            'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
-  print('==> Preparing data..')
-  img_dim = get_model_property('img_dim')
-  if FLAGS.fake_data:
-    train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
-    train_loader = xu.SampleGenerator(
-        data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
-              torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
-        sample_count=train_dataset_len // FLAGS.batch_size //
-        xm.xrt_world_size())
-    test_loader = xu.SampleGenerator(
-        data=(torch.zeros(FLAGS.test_set_batch_size, 3, img_dim, img_dim),
-              torch.zeros(FLAGS.test_set_batch_size, dtype=torch.int64)),
-        sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
-  else:
-    transform = DataAugmentationDINO(
+    print('==> Preparing data..')
+    img_dim = get_model_property('img_dim')
+    if FLAGS.fake_data:
+        train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
+        train_loader = xu.SampleGenerator(
+            data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
+                torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
+            sample_count=train_dataset_len // FLAGS.batch_size //
+            xm.xrt_world_size())
+        test_loader = xu.SampleGenerator(
+            data=(torch.zeros(FLAGS.test_set_batch_size, 3, img_dim, img_dim),
+                    torch.zeros(FLAGS.test_set_batch_size, dtype=torch.int64)),
+                    sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
+    else:
+        transform = DataAugmentationDINO(
         args.global_crops_scale,
         args.local_crops_scale,
         args.local_crops_number,
-    )
-    dataset = datasets.ImageFolder(args.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
-    sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        sampler=sampler,
-        batch_size=FLAGS.batch_size_per_gpu,
-        num_workers=FLAGS.num_workers,
-        pin_memory=True,
-        drop_last=True,
-    )
-    print(f"Data loaded: there are {len(dataset)} images.")
+        )
+        dataset = datasets.ImageFolder(args.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
+        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            sampler=sampler,
+            batch_size=FLAGS.batch_size_per_gpu,
+            num_workers=FLAGS.num_workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+        print(f"Data loaded: there are {len(dataset)} images.")
+        
+        train_dataset = torchvision.datasets.ImageFolder(
+            os.path.join(FLAGS.datadir, 'train'),
+            transforms.Compose([
+                transforms.Resize((img_dim,img_dim)),
+                transform
+            ]))
+        train_dataset_len = len(train_dataset.imgs)
+        resize_dim = max(img_dim, 224)
+        test_dataset = torchvision.datasets.ImageFolder(
+            os.path.join(FLAGS.datadir, 'validation'),
+            # Matches Torchvision's eval transforms except Torchvision uses size
+            # 256 resize for all models both here and in the train loader. Their
+            # version crashes during training on 299x299 images, e.g. inception.
+            transforms.Compose([
+                transforms.Resize((resize_dim,resize_dim)),
+                transform
+            ]))
+
+        train_sampler, test_sampler = None, None
+        if xm.xrt_world_size() > 1:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(
+                train_dataset,
+                num_replicas=xm.xrt_world_size(),
+                rank=xm.get_ordinal(),
+                shuffle=True)
+            test_sampler = torch.utils.data.distributed.DistributedSampler(
+                test_dataset,
+                num_replicas=xm.xrt_world_size(),
+                rank=xm.get_ordinal(),
+                shuffle=False)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=FLAGS.batch_size,
+            sampler=train_sampler,
+            drop_last=FLAGS.drop_last,
+            shuffle=False if train_sampler else True,
+            num_workers=FLAGS.num_workers,
+            persistent_workers=FLAGS.persistent_workers,
+            prefetch_factor=FLAGS.prefetch_factor)
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset,
+            batch_size=FLAGS.test_set_batch_size,
+            sampler=test_sampler,
+            drop_last=FLAGS.drop_last,
+            shuffle=False,
+            num_workers=FLAGS.num_workers,
+            persistent_workers=FLAGS.persistent_workers,
+            prefetch_factor=FLAGS.prefetch_factor)
+
+    torch.manual_seed(42)
+
+    device = xm.xla_device()
     
-    train_dataset = torchvision.datasets.ImageFolder(
-        os.path.join(FLAGS.datadir, 'train'),
-        transforms.Compose([
-            transforms.Resize((img_dim,img_dim)),
-            transform
-        ]))
-    train_dataset_len = len(train_dataset.imgs)
-    resize_dim = max(img_dim, 224)
-    test_dataset = torchvision.datasets.ImageFolder(
-        os.path.join(FLAGS.datadir, 'validation'),
-        # Matches Torchvision's eval transforms except Torchvision uses size
-        # 256 resize for all models both here and in the train loader. Their
-        # version crashes during training on 299x299 images, e.g. inception.
-        transforms.Compose([
-            transforms.Resize((resize_dim,resize_dim)),
-            transform
-        ]))
+    student = get_model_property('model_fn')().to(device)
+    teacher = get_model_property('model_fn')().to(device)
+    embed_dim = student.fc.weight.shape[1]
 
-    train_sampler, test_sampler = None, None
-    if xm.xrt_world_size() > 1:
-      train_sampler = torch.utils.data.distributed.DistributedSampler(
-          train_dataset,
-          num_replicas=xm.xrt_world_size(),
-          rank=xm.get_ordinal(),
-          shuffle=True)
-      test_sampler = torch.utils.data.distributed.DistributedSampler(
-          test_dataset,
-          num_replicas=xm.xrt_world_size(),
-          rank=xm.get_ordinal(),
-          shuffle=False)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=FLAGS.batch_size,
-        sampler=train_sampler,
-        drop_last=FLAGS.drop_last,
-        shuffle=False if train_sampler else True,
-        num_workers=FLAGS.num_workers,
-        persistent_workers=FLAGS.persistent_workers,
-        prefetch_factor=FLAGS.prefetch_factor)
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=FLAGS.test_set_batch_size,
-        sampler=test_sampler,
-        drop_last=FLAGS.drop_last,
-        shuffle=False,
-        num_workers=FLAGS.num_workers,
-        persistent_workers=FLAGS.persistent_workers,
-        prefetch_factor=FLAGS.prefetch_factor)
-
-  torch.manual_seed(42)
-
-  device = xm.xla_device()
-  
-  
-  
-  student = get_model_property('model_fn')().to(device)
-  teacher = get_model_property('model_fn')().to(device)
-  embed_dim = student.fc.weight.shape[1]
-
-  student = utils.MultiCropWrapper(student, DINOHead(
+    student = utils.MultiCropWrapper(student, DINOHead(
         embed_dim,
         args.out_dim,
         use_bn=args.use_bn_in_head,
         norm_last_layer=args.norm_last_layer,
     ))
-  teacher = utils.MultiCropWrapper(
+    teacher = utils.MultiCropWrapper(
         teacher,
         DINOHead(embed_dim, args.out_dim, args.use_bn_in_head),
     )
-  # Initialization is nondeterministic with multiple threads in PjRt.
-  # Synchronize model parameters across replicas manually.
-  if xr.using_pjrt():
-    xm.broadcast_master_param(model)
+    # Initialization is nondeterministic with multiple threads in PjRt.
+    # Synchronize model parameters across replicas manually.
+    if xr.using_pjrt():
+        xm.broadcast_master_param(model)
 
-  if FLAGS.ddp:
-    student = DDP(student, gradient_as_bucket_view=True, broadcast_buffers=False)
-    teacher = DDP(teacher, gradient_as_bucket_view=True, broadcast_buffers=False)
+    if FLAGS.ddp:
+        student = DDP(student, gradient_as_bucket_view=True, broadcast_buffers=False)
+        teacher = DDP(teacher, gradient_as_bucket_view=True, broadcast_buffers=False)
 
-  # ============ preparing loss ... ============
-  dino_loss = DINOLoss(
+    # ============ preparing loss ... ============
+    dino_loss = DINOLoss(
         FLAGS.out_dim,
         FLAGS.local_crops_number + 2,  # total number of crops = 2 global crops + local_crops_number
         FLAGS.warmup_teacher_temp,
         FLAGS.teacher_temp,
         FLAGS.warmup_teacher_temp_epochs,
         FLAGS.epochs,
-  )
+    )
 
-  writer = None
-  if xm.is_master_ordinal():
-    writer = test_utils.get_summary_writer(FLAGS.logdir)
-  optimizer = optim.SGD(
-      model.parameters(),
-      lr=FLAGS.lr,
-      momentum=FLAGS.momentum,
-      weight_decay=1e-4)
-  num_training_steps_per_epoch = train_dataset_len // (
-      FLAGS.batch_size * xm.xrt_world_size())
-  lr_scheduler = schedulers.wrap_optimizer_with_scheduler(
-      optimizer,
-      scheduler_type=getattr(FLAGS, 'lr_scheduler_type', None),
-      scheduler_divisor=getattr(FLAGS, 'lr_scheduler_divisor', None),
-      scheduler_divide_every_n_epochs=getattr(
-          FLAGS, 'lr_scheduler_divide_every_n_epochs', None),
-      num_steps_per_epoch=num_training_steps_per_epoch,
-      summary_writer=writer)
-  loss_fn = dino_loss
+    if FLAGS.use_fp16:
+        fp16_scaler = torch.cuda.amp.GradScaler()
 
-  if FLAGS.profile:
-    server = xp.start_server(FLAGS.profiler_port)
+    writer = None
+    if xm.is_master_ordinal():
+        writer = test_utils.get_summary_writer(FLAGS.logdir)
+    optimizer = optim.SGD(
+        model.parameters(),
+        lr=FLAGS.lr,
+        momentum=FLAGS.momentum,
+        weight_decay=1e-4)
+    num_training_steps_per_epoch = train_dataset_len // (
+        FLAGS.batch_size * xm.xrt_world_size())
+    
+    
+    """lr_scheduler = schedulers.wrap_optimizer_with_scheduler(
+        optimizer,
+        scheduler_type=getattr(FLAGS, 'lr_scheduler_type', None),
+        scheduler_divisor=getattr(FLAGS, 'lr_scheduler_divisor', None),
+        scheduler_divide_every_n_epochs=getattr(
+        FLAGS, 'lr_scheduler_divide_every_n_epochs', None),
+        num_steps_per_epoch=num_training_steps_per_epoch,
+        summary_writer=writer)"""
+    
+    # ============ init schedulers ... ============
+    lr_schedule = utils.cosine_scheduler(
+        FLAGS.lr * (FLAGS.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
+        FLAGS.min_lr,
+        FLAGS.epochs, len(data_loader),
+        warmup_epochs=FLAGS.warmup_epochs,
+    )
+    wd_schedule = utils.cosine_scheduler(
+        FLAGS.weight_decay,
+        FLAGS.weight_decay_end,
+        FLAGS.epochs, len(data_loader),
+    )
+    # momentum parameter is increased to 1. during training with a cosine schedule
+    momentum_schedule = utils.cosine_scheduler(FLAGS.momentum_teacher, 1,
+                                               FLAGS.epochs, len(data_loader))
+    
+    loss_fn = dino_loss
 
-  def train_loop_fn(loader, epoch):
-    tracker = xm.RateTracker()
-    model.train()
-    for step, (data, target) in enumerate(loader):
-      with xp.StepTrace('train_imagenet'):
-        with xp.Trace('build_graph'):
-            teacher_output = teacher(data[:2])
-            student_output = student(data)
-            loss = dino_loss(student_output, teacher_output, step)
-        
-            if not math.isfinite(loss.item()):
-                print("Loss is {}, stopping training".format(loss.item()), force=True)
-                sys.exit(1)
-          
-            optimizer.zero_grad()
-            
-            param_norms = None
-            loss.backward()
-            if FLAGS.clip_grad:
-                param_norms = utils.clip_gradients(student, args.clip_grad)
-            utils.cancel_gradients_last_layer(epoch, student,
-                                                args.freeze_last_layer)
-            optimizer.step()
-            with torch.no_grad():
-                m = momentum_schedule[step]  # momentum parameter
-                for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
-                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-            #loss.backward()
-            if FLAGS.ddp:
-                optimizer.step()
-            else:
-                xm.optimizer_step(optimizer)
-                tracker.add(FLAGS.batch_size)
-            if lr_scheduler:
-                lr_scheduler.step()
+    if FLAGS.profile:
+        server = xp.start_server(FLAGS.profiler_port)
+    
+    #Train function
+    def train_loop_fn(loader, epoch):
+        tracker = xm.RateTracker()
+        model.train()
+        for step, (data, target) in enumerate(loader):
+            with xp.StepTrace('train_imagenet'):
+                with xp.Trace('build_graph'):
+                    teacher_output = teacher(data[:2])
+                    student_output = student(data)
+                    loss = dino_loss(student_output, teacher_output, step)
+                
+                    if not math.isfinite(loss.item()):
+                        print("Loss is {}, stopping training".format(loss.item()), force=True)
+                        sys.exit(1)
+                
+                    optimizer.zero_grad()
+                    
+                    param_norms = None
+
+                    if fp16_scaler is None:
+                        loss.backward()
+                        if args.clip_grad:
+                            param_norms = utils.clip_gradients(student, args.clip_grad)
+                        utils.cancel_gradients_last_layer(epoch, student,
+                                                        args.freeze_last_layer)
+                        if FLAGS.ddp:
+                            optimizer.step()
+                        else:
+                            xm.optimizer_step(optimizer)
+                            tracker.add(FLAGS.batch_size)
+                    else:
+                        fp16_scaler.scale(loss).backward()
+                        if args.clip_grad:
+                            fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+                            param_norms = utils.clip_gradients(student, args.clip_grad)
+                        utils.cancel_gradients_last_layer(epoch, student,
+                                                        args.freeze_last_layer)
+                        fp16_scaler.step(optimizer)
+                        fp16_scaler.update()
+
+
+                    with torch.no_grad():
+                        m = momentum_schedule[step]  # momentum parameter
+                        for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
+                            param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+                    
+                    """if lr_scheduler:
+                        lr_scheduler.step()"""
+                if step % FLAGS.log_steps == 0:
+                    xm.add_step_closure(
+                        _train_update, args=(device, step, loss, tracker, epoch, writer))
+    #Test Functions
+    def test_loop_fn(loader, epoch):
+        total_samples, correct = 0, 0
+        model.eval()
+        for step, (data, target) in enumerate(loader):
+            output = model(data)
+            pred = output.max(1, keepdim=True)[1]
+            correct += pred.eq(target.view_as(pred)).sum()
+            total_samples += data.size()[0]
             if step % FLAGS.log_steps == 0:
-            xm.add_step_closure(
-              _train_update, args=(device, step, loss, tracker, epoch, writer))
+                xm.add_step_closure(
+                test_utils.print_test_update, args=(device, None, epoch, step))
+        accuracy = 100.0 * correct.item() / total_samples
+        accuracy = xm.mesh_reduce('test_accuracy', accuracy, np.mean)
+        return accuracy
 
-  def test_loop_fn(loader, epoch):
-    total_samples, correct = 0, 0
-    model.eval()
-    for step, (data, target) in enumerate(loader):
-      output = model(data)
-      pred = output.max(1, keepdim=True)[1]
-      correct += pred.eq(target.view_as(pred)).sum()
-      total_samples += data.size()[0]
-      if step % FLAGS.log_steps == 0:
-        xm.add_step_closure(
-            test_utils.print_test_update, args=(device, None, epoch, step))
-    accuracy = 100.0 * correct.item() / total_samples
-    accuracy = xm.mesh_reduce('test_accuracy', accuracy, np.mean)
-    return accuracy
+    #Devices
+    train_device_loader = pl.MpDeviceLoader(
+        train_loader,
+        device,
+        loader_prefetch_size=FLAGS.loader_prefetch_size,
+        device_prefetch_size=FLAGS.device_prefetch_size,
+        host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
+    test_device_loader = pl.MpDeviceLoader(
+        test_loader,
+        device,
+        loader_prefetch_size=FLAGS.loader_prefetch_size,
+        device_prefetch_size=FLAGS.device_prefetch_size,
+        host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
+        
+    accuracy, max_accuracy = 0.0, 0.0
+    for epoch in range(1, FLAGS.num_epochs + 1):
+        xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
+        train_loop_fn(train_device_loader, epoch)
+        xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
+        if not FLAGS.test_only_at_end or epoch == FLAGS.num_epochs:
+            accuracy = test_loop_fn(test_device_loader, epoch)
+            xm.master_print('Epoch {} test end {}, Accuracy={:.2f}'.format(
+            epoch, test_utils.now(), accuracy))
+            max_accuracy = max(accuracy, max_accuracy)
+            test_utils.write_to_summary(
+                writer,
+                epoch,
+                dict_to_write={'Accuracy/test': accuracy},
+                write_xla_metrics=True)
+        if FLAGS.metrics_debug:
+            xm.master_print(met.metrics_report())
 
-  train_device_loader = pl.MpDeviceLoader(
-      train_loader,
-      device,
-      loader_prefetch_size=FLAGS.loader_prefetch_size,
-      device_prefetch_size=FLAGS.device_prefetch_size,
-      host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
-  test_device_loader = pl.MpDeviceLoader(
-      test_loader,
-      device,
-      loader_prefetch_size=FLAGS.loader_prefetch_size,
-      device_prefetch_size=FLAGS.device_prefetch_size,
-      host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
-
-  accuracy, max_accuracy = 0.0, 0.0
-  for epoch in range(1, FLAGS.num_epochs + 1):
-    xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
-    train_loop_fn(train_device_loader, epoch)
-    xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
-    '''if not FLAGS.test_only_at_end or epoch == FLAGS.num_epochs:
-      accuracy = test_loop_fn(test_device_loader, epoch)
-      xm.master_print('Epoch {} test end {}, Accuracy={:.2f}'.format(
-          epoch, test_utils.now(), accuracy))
-      max_accuracy = max(accuracy, max_accuracy)
-      test_utils.write_to_summary(
-          writer,
-          epoch,
-          dict_to_write={'Accuracy/test': accuracy},
-          write_xla_metrics=True)'''
-    if FLAGS.metrics_debug:
-      xm.master_print(met.metrics_report())
-
-  test_utils.close_summary_writer(writer)
-  xm.master_print('Max Accuracy: {:.2f}%'.format(max_accuracy))
-  return max_accuracy
+    test_utils.close_summary_writer(writer)
+    xm.master_print('Max Accuracy: {:.2f}%'.format(max_accuracy))
+    return max_accuracy
 
 
 def _mp_fn(index, flags):
-  global FLAGS
-  FLAGS = flags
-  torch.set_default_tensor_type('torch.FloatTensor')
-  accuracy = train_imagenet()
-  if accuracy < FLAGS.target_accuracy:
-    print('Accuracy {} is below target {}'.format(accuracy,
+    global FLAGS
+    FLAGS = flags
+    torch.set_default_tensor_type('torch.FloatTensor')
+    accuracy = train_imagenet()
+    if accuracy < FLAGS.target_accuracy:
+        print('Accuracy {} is below target {}'.format(accuracy,
                                                   FLAGS.target_accuracy))
-    sys.exit(21)
+        sys.exit(21)
 
 
 if __name__ == '__main__':
-  xmp.spawn(_mp_fn, args=(FLAGS,), nprocs=FLAGS.num_cores)
+    xmp.spawn(_mp_fn, args=(FLAGS,), nprocs=FLAGS.num_cores)
