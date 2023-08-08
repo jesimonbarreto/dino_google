@@ -313,7 +313,6 @@ def get_args_parser(datadir=None,
     parser.add_argument('--num_workers', type=int, default=num_workers)
     parser.add_argument('--log_steps', type=int, default=log_steps)
     parser.add_argument('--profiler_port', type=int, default=profiler_port)
-    parser.add_argument('--lr', type=float, default=lr)
     parser.add_argument('--momentum', type=float, default=momentum)
     parser.add_argument('--target_accuracy', type=float, default=target_accuracy)
     parser.add_argument('--drop_last', action='store_true')
