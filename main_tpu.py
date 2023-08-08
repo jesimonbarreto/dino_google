@@ -1,5 +1,5 @@
-from torch_xla import runtime as xr
-import args_parse
+#from torch_xla import runtime as xr
+#import args_parse
 import argparse
 import os
 import sys
