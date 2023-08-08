@@ -23,6 +23,10 @@ import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
 
+torchvision_archs = sorted(name for name in torchvision_models.__dict__
+    if name.islower() and not name.startswith("__")
+    and callable(torchvision_models.__dict__[name]))
+
 import os
 import schedulers
 import numpy as np
