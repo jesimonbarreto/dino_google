@@ -330,8 +330,7 @@ def get_args_parser(datadir=None,
     xla_folder = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
     sys.path.append(os.path.join(os.path.dirname(xla_folder), 'test'))
     
-    
-    return parser
+    return args
 
 FLAGS = get_args_parser(
     datadir='~/imagenet',
