@@ -320,8 +320,8 @@ def get_args_parser(datadir=None,
     parser.add_argument('--async_closures', action='store_true')
     parser.add_argument('--debug', action='store_true')
     if opts:
-    for name, aopts in opts:
-        parser.add_argument(name, **aopts)
+        for name, aopts in opts:
+            parser.add_argument(name, **aopts)
     args, leftovers = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + leftovers
     # Setup import folders.
