@@ -1,5 +1,3 @@
-from torch_xla import runtime as xr
-#import args_parse
 import argparse
 import os
 import sys
@@ -548,8 +546,9 @@ def train_imagenet():
     )
     # Initialization is nondeterministic with multiple threads in PjRt.
     # Synchronize model parameters across replicas manually.
-    if xr.using_pjrt():
-        xm.broadcast_master_param(model)
+    #if xr.using_pjrt():
+    xm.broadcast_master_param(student)
+    xm.broadcast_master_param(teacher)
 
     if FLAGS.ddp:
         student = DDP(student, gradient_as_bucket_view=True, broadcast_buffers=False)
