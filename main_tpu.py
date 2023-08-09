@@ -402,7 +402,7 @@ MODEL_SPECIFIC_DEFAULTS = {
     # if they don't exist.
     'resnet50':
         dict(
-            OPTIMIZED_KWFLAGS.get(FLAGS.use_optimized_kwargs, DEFAULT_KWARGS),
+            OPTIMIZED_KWARGS.get(FLAGS.use_optimized_kwargs, DEFAULT_KWARGS),
             **{
                 'lr': 0.5,
                 'lr_scheduler_divide_every_n_epochs': 20,
