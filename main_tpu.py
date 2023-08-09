@@ -535,7 +535,6 @@ def train_imagenet():
     
     student = student.to(device)
     teacher = teacher.to(device)
-    embed_dim = student.fc.weight.shape[1]
 
     student = utils.MultiCropWrapper(student, DINOHead(
         embed_dim,
