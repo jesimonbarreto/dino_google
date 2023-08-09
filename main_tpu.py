@@ -470,12 +470,12 @@ def train_imagenet():
         FLAGS.local_crops_scale,
         FLAGS.local_crops_number,
         )
-        dataset = datasets.ImageFolder(FLAGS.datadir, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
-
+        train_dataset = datasets.ImageFolder(FLAGS.datadir, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
+        train_dataset_len = len(train_dataset.imgs)
         train_sampler, test_sampler = None, None
         if xm.xrt_world_size() > 1:
             train_sampler = torch.utils.data.distributed.DistributedSampler(
-                dataset,
+                train_dataset,
                 num_replicas=xm.xrt_world_size(),
                 rank=xm.get_ordinal(),
                 shuffle=True)
