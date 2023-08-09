@@ -604,7 +604,7 @@ def train_imagenet():
     lr_schedule = utils.cosine_scheduler(
         FLAGS.lr * (FLAGS.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
         FLAGS.min_lr,
-        FLAGS.epochs, len(data_loader),
+        FLAGS.epochs, len(train_loader),
         num_steps_per_epoch=num_training_steps_per_epoch,
         warmup_epochs=FLAGS.warmup_epochs,
         summary_writer=writer
@@ -612,7 +612,7 @@ def train_imagenet():
     wd_schedule = utils.cosine_scheduler(
         FLAGS.weight_decay,
         FLAGS.weight_decay_end,
-        FLAGS.epochs, len(data_loader),
+        FLAGS.epochs, len(train_loader),
         num_steps_per_epoch=num_training_steps_per_epoch,
         warmup_epochs=FLAGS.warmup_epochs,
         summary_writer=writer
@@ -620,7 +620,7 @@ def train_imagenet():
 
     # momentum parameter is increased to 1. during training with a cosine schedule
     momentum_schedule = utils.cosine_scheduler(FLAGS.momentum_teacher, 1,
-                                               FLAGS.epochs, len(data_loader))
+                                               FLAGS.epochs, len(train_loader))
     
     loss_fn = dino_loss
 
