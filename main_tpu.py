@@ -222,7 +222,7 @@ def get_args_parser(datadir=None,
     parser = argparse.ArgumentParser('DINO', add_help=False)
 
     # Model parameters
-    parser.add_argument('--arch', default='vit_small', type=str,
+    parser.add_argument('--arch', default='vit_tiny', type=str,
         choices=['vit_tiny', 'vit_small', 'vit_base', 'xcit', 'deit_tiny', 'deit_small'] \
                 + torchvision_archs + torch.hub.list("facebookresearch/xcit:main"),
         help="""Name of architecture to train. For quick experiments with ViTs,
@@ -452,7 +452,7 @@ def train_imagenet():
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
     print('==> Preparing data..')
-    img_dim = get_model_property('img_dim')
+    #img_dim = get_model_property('img_dim')
     if FLAGS.fake_data:
         train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
         train_loader = xu.SampleGenerator(
