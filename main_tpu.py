@@ -696,19 +696,19 @@ def train_imagenet():
         loader_prefetch_size=FLAGS.loader_prefetch_size,
         device_prefetch_size=FLAGS.device_prefetch_size,
         host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
-    test_device_loader = pl.MpDeviceLoader(
-        test_loader,
-        device,
-        loader_prefetch_size=FLAGS.loader_prefetch_size,
-        device_prefetch_size=FLAGS.device_prefetch_size,
-        host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
+    #test_device_loader = pl.MpDeviceLoader(
+    #    test_loader,
+    #    device,
+    #    loader_prefetch_size=FLAGS.loader_prefetch_size,
+    #    device_prefetch_size=FLAGS.device_prefetch_size,
+    #    host_to_device_transfer_threads=FLAGS.host_to_device_transfer_threads)
         
     accuracy, max_accuracy = 0.0, 0.0
     for epoch in range(1, FLAGS.num_epochs + 1):
         xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
         train_loop_fn(train_device_loader, epoch)
         xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
-        if not FLAGS.test_only_at_end or epoch == FLAGS.num_epochs:
+        '''if not FLAGS.test_only_at_end or epoch == FLAGS.num_epochs:
             accuracy = test_loop_fn(test_device_loader, epoch)
             xm.master_print('Epoch {} test end {}, Accuracy={:.2f}'.format(
             epoch, test_utils.now(), accuracy))
@@ -717,11 +717,11 @@ def train_imagenet():
                 writer,
                 epoch,
                 dict_to_write={'Accuracy/test': accuracy},
-                write_xla_metrics=True)
+                write_xla_metrics=True)'''
         if FLAGS.metrics_debug:
             xm.master_print(met.metrics_report())
 
-    test_utils.close_summary_writer(writer)
+    #test_utils.close_summary_writer(writer)
     xm.master_print('Max Accuracy: {:.2f}%'.format(max_accuracy))
     return max_accuracy
 
