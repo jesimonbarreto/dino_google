@@ -470,7 +470,7 @@ def train_imagenet():
         FLAGS.local_crops_scale,
         FLAGS.local_crops_number,
         )
-        dataset = datasets.ImageFolder(FLAGS.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
+        dataset = datasets.ImageFolder(FLAGS.datadir, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
 
         train_sampler, test_sampler = None, None
         if xm.xrt_world_size() > 1:
