@@ -625,7 +625,8 @@ def train_imagenet():
     #Train function
     def train_loop_fn(loader, epoch):
         tracker = xm.RateTracker()
-        model.train()
+        teacher.train()
+        student.train()
         for step, (data, target) in enumerate(loader):
             with xp.StepTrace('train_imagenet'):
                 with xp.Trace('build_graph'):
