@@ -46,6 +46,8 @@ import torch_xla.test.test_utils as test_utils
 
 import torch.distributed as dist
 import torch_xla.distributed.xla_backend
+import torch_xla.experimental.pjrt_backend
+import torch_xla.experimental.pjrt as pjrt
 
 class DINOLoss(nn.Module):
     def __init__(self, out_dim, ncrops, warmup_teacher_temp, teacher_temp,
@@ -445,6 +447,7 @@ def train_imagenet():
     if FLAGS.pjrt_distributed:
         import torch_xla.experimental.pjrt_backend
         dist.init_process_group('xla', init_method='pjrt://')
+        print('PJRT execution')
     elif FLAGS.ddp:
         dist.init_process_group(
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
@@ -547,8 +550,8 @@ def train_imagenet():
     # Initialization is nondeterministic with multiple threads in PjRt.
     # Synchronize model parameters across replicas manually.
     #if xr.using_pjrt():
-    xm.broadcast_master_param(student)
-    xm.broadcast_master_param(teacher)
+    pjrt.broadcast_master_paramm(student)
+    pjrt.broadcast_master_param(teacher)
 
     if FLAGS.ddp:
         student = DDP(student, gradient_as_bucket_view=True, broadcast_buffers=False)
