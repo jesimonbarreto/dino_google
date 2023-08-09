@@ -449,6 +449,7 @@ def train_imagenet():
         dist.init_process_group('xla', init_method='pjrt://')
         print('PJRT execution')
     elif FLAGS.ddp:
+        print('DDP execution')
         dist.init_process_group(
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
@@ -550,8 +551,8 @@ def train_imagenet():
     # Initialization is nondeterministic with multiple threads in PjRt.
     # Synchronize model parameters across replicas manually.
     #if xr.using_pjrt():
-    pjrt.broadcast_master_paramm(student)
-    pjrt.broadcast_master_param(teacher)
+    #pjrt.broadcast_master_paramm(student)
+    #pjrt.broadcast_master_param(teacher)
 
     if FLAGS.ddp:
         student = DDP(student, gradient_as_bucket_view=True, broadcast_buffers=False)
