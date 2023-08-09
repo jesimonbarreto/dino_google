@@ -572,11 +572,11 @@ def train_imagenet():
         writer = test_utils.get_summary_writer(FLAGS.logdir)
     
     params_groups = utils.get_params_groups(student)
-    if args.optimizer == "adamw":
+    if FLAGS.optimizer == "adamw":
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
-    elif args.optimizer == "sgd":
+    elif FLAGS.optimizer == "sgd":
         optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
-    elif args.optimizer == "lars":
+    elif FLAGS.optimizer == "lars":
         optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
     
     # for mixed precision training
