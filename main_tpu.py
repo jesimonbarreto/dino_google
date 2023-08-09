@@ -402,7 +402,7 @@ MODEL_SPECIFIC_DEFAULTS = {
     # if they don't exist.
     'resnet50':
         dict(
-            OPTIMIZED_KWARGS.get(FLAGS.use_optimized_kwargs, DEFAULT_KWARGS),
+            OPTIMIZED_KWFLAGS.get(FLAGS.use_optimized_kwargs, DEFAULT_KWARGS),
             **{
                 'lr': 0.5,
                 'lr_scheduler_divide_every_n_epochs': 20,
@@ -466,52 +466,24 @@ def train_imagenet():
                     sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
     else:
         transform = DataAugmentationDINO(
-        args.global_crops_scale,
-        args.local_crops_scale,
-        args.local_crops_number,
+        FLAGS.global_crops_scale,
+        FLAGS.local_crops_scale,
+        FLAGS.local_crops_number,
         )
-        dataset = datasets.ImageFolder(args.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
-        sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
-        data_loader = torch.utils.data.DataLoader(
-            dataset,
-            sampler=sampler,
-            batch_size=FLAGS.batch_size_per_gpu,
-            num_workers=FLAGS.num_workers,
-            pin_memory=True,
-            drop_last=True,
-        )
-        print(f"Data loaded: there are {len(dataset)} images.")
-        
-        train_dataset = torchvision.datasets.ImageFolder(
-            os.path.join(FLAGS.datadir, 'train'),
-            transforms.Compose([
-                transforms.Resize((img_dim,img_dim)),
-                transform
-            ]))
-        train_dataset_len = len(train_dataset.imgs)
-        resize_dim = max(img_dim, 224)
-        test_dataset = torchvision.datasets.ImageFolder(
-            os.path.join(FLAGS.datadir, 'validation'),
-            # Matches Torchvision's eval transforms except Torchvision uses size
-            # 256 resize for all models both here and in the train loader. Their
-            # version crashes during training on 299x299 images, e.g. inception.
-            transforms.Compose([
-                transforms.Resize((resize_dim,resize_dim)),
-                transform
-            ]))
+        dataset = datasets.ImageFolder(FLAGS.data_path, transform=transforms.Compose([transforms.Resize((256,256)),transform]))
 
         train_sampler, test_sampler = None, None
         if xm.xrt_world_size() > 1:
             train_sampler = torch.utils.data.distributed.DistributedSampler(
-                train_dataset,
+                dataset,
                 num_replicas=xm.xrt_world_size(),
                 rank=xm.get_ordinal(),
                 shuffle=True)
-            test_sampler = torch.utils.data.distributed.DistributedSampler(
+            """test_sampler = torch.utils.data.distributed.DistributedSampler(
                 test_dataset,
                 num_replicas=xm.xrt_world_size(),
                 rank=xm.get_ordinal(),
-                shuffle=False)
+                shuffle=False)"""
         train_loader = torch.utils.data.DataLoader(
             train_dataset,
             batch_size=FLAGS.batch_size,
@@ -521,7 +493,7 @@ def train_imagenet():
             num_workers=FLAGS.num_workers,
             persistent_workers=FLAGS.persistent_workers,
             prefetch_factor=FLAGS.prefetch_factor)
-        test_loader = torch.utils.data.DataLoader(
+        """test_loader = torch.utils.data.DataLoader(
             test_dataset,
             batch_size=FLAGS.test_set_batch_size,
             sampler=test_sampler,
@@ -530,24 +502,50 @@ def train_imagenet():
             num_workers=FLAGS.num_workers,
             persistent_workers=FLAGS.persistent_workers,
             prefetch_factor=FLAGS.prefetch_factor)
+            print(f"Data loaded: there are {len(dataset)} images.")"""
+        
+        torch.manual_seed(42)
+        FLAGS.arch = FLAGS.arch.replace("deit", "vit")
+        # if the network is a Vision Transformer (i.e. vit_tiny, vit_small, vit_base)
+        if FLAGS.arch in vits.__dict__.keys():
+            student = vits.__dict__[FLAGS.arch](
+                patch_size=FLAGS.patch_size,
+                drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
+            )
+            teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size)
+            embed_dim = student.embed_dim
+        # if the network is a XCiT
+        elif FLAGS.arch in torch.hub.list("facebookresearch/xcit:main"):
+            student = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch,
+                                    pretrained=False, drop_path_rate=FLAGS.drop_path_rate)
+            teacher = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch, pretrained=False)
+            embed_dim = student.embed_dim
+        # otherwise, we check if the architecture is in torchvision models
+        elif FLAGS.arch in torchvision_models.__dict__.keys():
+            student = torchvision_models.__dict__[FLAGS.arch]()
+            teacher = torchvision_models.__dict__[FLAGS.arch]()
+            embed_dim = student.fc.weight.shape[1]
+        else:
+            print(f"Unknow architecture: {FLAGS.arch}")
+
 
     torch.manual_seed(42)
 
     device = xm.xla_device()
     
-    student = get_model_property('model_fn')().to(device)
-    teacher = get_model_property('model_fn')().to(device)
+    student = student.to(device)
+    teacher = teacher.to(device)
     embed_dim = student.fc.weight.shape[1]
 
     student = utils.MultiCropWrapper(student, DINOHead(
         embed_dim,
-        args.out_dim,
-        use_bn=args.use_bn_in_head,
-        norm_last_layer=args.norm_last_layer,
+        FLAGS.out_dim,
+        use_bn=FLAGS.use_bn_in_head,
+        norm_last_layer=FLAGS.norm_last_layer,
     ))
     teacher = utils.MultiCropWrapper(
         teacher,
-        DINOHead(embed_dim, args.out_dim, args.use_bn_in_head),
+        DINOHead(embed_dim, FLAGS.out_dim, FLAGS.use_bn_in_head),
     )
     # Initialization is nondeterministic with multiple threads in PjRt.
     # Synchronize model parameters across replicas manually.
@@ -568,17 +566,25 @@ def train_imagenet():
         FLAGS.epochs,
     )
 
-    if FLAGS.use_fp16:
-        fp16_scaler = torch.cuda.amp.GradScaler()
-
+    # ============ preparing optimizer ... ============
     writer = None
     if xm.is_master_ordinal():
         writer = test_utils.get_summary_writer(FLAGS.logdir)
-    optimizer = optim.SGD(
-        model.parameters(),
-        lr=FLAGS.lr,
-        momentum=FLAGS.momentum,
-        weight_decay=1e-4)
+    
+    params_groups = utils.get_params_groups(student)
+    if args.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
+    elif args.optimizer == "sgd":
+        optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
+    elif args.optimizer == "lars":
+        optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
+    
+    # for mixed precision training
+    fp16_scaler = None
+    if FLAGS.use_fp16:
+        fp16_scaler = torch.cuda.amp.GradScaler()
+
+    
     num_training_steps_per_epoch = train_dataset_len // (
         FLAGS.batch_size * xm.xrt_world_size())
     
@@ -597,13 +603,19 @@ def train_imagenet():
         FLAGS.lr * (FLAGS.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
         FLAGS.min_lr,
         FLAGS.epochs, len(data_loader),
+        num_steps_per_epoch=num_training_steps_per_epoch,
         warmup_epochs=FLAGS.warmup_epochs,
+        summary_writer=writer
     )
     wd_schedule = utils.cosine_scheduler(
         FLAGS.weight_decay,
         FLAGS.weight_decay_end,
         FLAGS.epochs, len(data_loader),
+        num_steps_per_epoch=num_training_steps_per_epoch,
+        warmup_epochs=FLAGS.warmup_epochs,
+        summary_writer=writer
     )
+
     # momentum parameter is increased to 1. during training with a cosine schedule
     momentum_schedule = utils.cosine_scheduler(FLAGS.momentum_teacher, 1,
                                                FLAGS.epochs, len(data_loader))
@@ -634,10 +646,10 @@ def train_imagenet():
 
                     if fp16_scaler is None:
                         loss.backward()
-                        if args.clip_grad:
-                            param_norms = utils.clip_gradients(student, args.clip_grad)
+                        if FLAGS.clip_grad:
+                            param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
                         utils.cancel_gradients_last_layer(epoch, student,
-                                                        args.freeze_last_layer)
+                                                        FLAGS.freeze_last_layer)
                         if FLAGS.ddp:
                             optimizer.step()
                         else:
@@ -645,11 +657,11 @@ def train_imagenet():
                             tracker.add(FLAGS.batch_size)
                     else:
                         fp16_scaler.scale(loss).backward()
-                        if args.clip_grad:
+                        if FLAGS.clip_grad:
                             fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                            param_norms = utils.clip_gradients(student, args.clip_grad)
+                            param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
                         utils.cancel_gradients_last_layer(epoch, student,
-                                                        args.freeze_last_layer)
+                                                        FLAGS.freeze_last_layer)
                         fp16_scaler.step(optimizer)
                         fp16_scaler.update()
 
