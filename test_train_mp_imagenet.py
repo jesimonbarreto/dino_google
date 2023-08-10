@@ -622,7 +622,6 @@ def train_imagenet():
     if FLAGS.profile:
         server = xp.start_server(FLAGS.profiler_port)
     
-    print('Esta aqui na definição do train\n\n')
     #Train function
     def train_loop_fn(loader, epoch):
         tracker = xm.RateTracker()
@@ -631,8 +630,10 @@ def train_imagenet():
         for step, (data, target) in enumerate(loader):
             with xp.StepTrace('train_imagenet'):
                 with xp.Trace('build_graph'):
+                    print('Antes do predic train\n\n')
                     teacher_output = teacher(data[:2])
                     student_output = student(data)
+                    print('Depois predict trainn\n\n')
                     loss = dino_loss(student_output, teacher_output, step)
                 
                     if not math.isfinite(loss.item()):
