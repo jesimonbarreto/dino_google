@@ -631,7 +631,7 @@ def train_imagenet():
             with xp.StepTrace('train_imagenet'):
                 with xp.Trace('build_graph'):
                     print('Antes do predic train\n\n')
-                    teacher_output = teacher(data[:2])
+                    teacher_output = teacher(data)
                     student_output = student(data)
                     print('Depois predict trainn\n\n')
                     loss = dino_loss(student_output, teacher_output, step)
