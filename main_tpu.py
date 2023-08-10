@@ -623,6 +623,7 @@ def train_imagenet():
     if FLAGS.profile:
         server = xp.start_server(FLAGS.profiler_port)
     
+    print('Esta aqui na definição do train\n\n')
     #Train function
     def train_loop_fn(loader, epoch):
         tracker = xm.RateTracker()
@@ -682,7 +683,7 @@ def train_imagenet():
         for step, (data, target) in enumerate(loader):
             output = model(data)
             pred = output.max(1, keepdim=True)[1]
-           print('Esta aqui na definição do train\n\n') correct += pred.eq(target.view_as(pred)).sum()
+            correct += pred.eq(target.view_as(pred)).sum()
             total_samples += data.size()[0]
             if step % FLAGS.log_steps == 0:
                 xm.add_step_closure(
