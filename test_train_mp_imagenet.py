@@ -1,4 +1,3 @@
-from torch_xla import runtime as xr
 import argparse
 import os
 import sys
