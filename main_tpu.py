@@ -154,16 +154,12 @@ class DataAugmentationDINO(object):
 
 
 
-SUPPORTED_MODELS = [
-    'alexnet', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
-    'inception_v3', 'resnet101', 'resnet152', 'resnet18', 'resnet34',
-    'resnet50', 'squeezenet1_0', 'squeezenet1_1', 'vgg11', 'vgg11_bn', 'vgg13',
-    'vgg13_bn', 'vgg16', 'vgg16_bn', 'vgg19', 'vgg19_bn'
-]
+SUPPORTED_MODELS = ['vit_tiny', 'vit_small', 'vit_base', 'xcit', 'deit_tiny', 'deit_small']
+
 MODEL_OPTS = {
     '--model': {
         'choices': SUPPORTED_MODELS,
-        'default': 'resnet50',
+        'default': 'vit_small',
     },
     '--test_set_batch_size': {
         'type': int,
@@ -458,7 +454,7 @@ def train_imagenet():
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
     print('==> Preparing data..')
-    img_dim = get_model_property('img_dim')
+    img_dim = 224
     if FLAGS.fake_data:
         train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
         train_loader = xu.SampleGenerator(
