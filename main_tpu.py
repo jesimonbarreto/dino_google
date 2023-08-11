@@ -454,7 +454,7 @@ def train_imagenet():
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
     print('==> Preparing data..')
-    #img_dim = get_model_property('img_dim')
+    img_dim = get_model_property('img_dim')
     if FLAGS.fake_data:
         train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
         train_loader = xu.SampleGenerator(
@@ -476,6 +476,7 @@ def train_imagenet():
         train_dataset_len = len(train_dataset.imgs)
         train_sampler, test_sampler = None, None
         if xm.xrt_world_size() > 1:
+            print('Split data')
             train_sampler = torch.utils.data.distributed.DistributedSampler(
                 train_dataset,
                 num_replicas=xm.xrt_world_size(),
@@ -631,7 +632,7 @@ def train_imagenet():
             with xp.StepTrace('train_imagenet'):
                 with xp.Trace('build_graph'):
                     print('Antes do predic train\n\n')
-                    teacher_output = teacher(data)
+                    teacher_output = teacher(data[:2])
                     student_output = student(data)
                     print('Depois predict trainn\n\n')
                     loss = dino_loss(student_output, teacher_output, step)
