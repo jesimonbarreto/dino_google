@@ -507,29 +507,29 @@ def train_imagenet():
             prefetch_factor=FLAGS.prefetch_factor)
             print(f"Data loaded: there are {len(dataset)} images.")"""
         
-        torch.manual_seed(42)
-        FLAGS.arch = FLAGS.arch.replace("deit", "vit")
-        # if the network is a Vision Transformer (i.e. vit_tiny, vit_small, vit_base)
-        if FLAGS.arch in vits.__dict__.keys():
-            student = vits.__dict__[FLAGS.arch](
-                patch_size=FLAGS.patch_size,
-                drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
-            )
-            teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size)
-            embed_dim = student.embed_dim
-        # if the network is a XCiT
-        elif FLAGS.arch in torch.hub.list("facebookresearch/xcit:main"):
-            student = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch,
-                                    pretrained=False, drop_path_rate=FLAGS.drop_path_rate)
-            teacher = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch, pretrained=False)
-            embed_dim = student.embed_dim
-        # otherwise, we check if the architecture is in torchvision models
-        elif FLAGS.arch in torchvision_models.__dict__.keys():
-            student = torchvision_models.__dict__[FLAGS.arch]()
-            teacher = torchvision_models.__dict__[FLAGS.arch]()
-            embed_dim = student.fc.weight.shape[1]
-        else:
-            print(f"Unknow architecture: {FLAGS.arch}")
+    torch.manual_seed(42)
+    FLAGS.arch = FLAGS.arch.replace("deit", "vit")
+    # if the network is a Vision Transformer (i.e. vit_tiny, vit_small, vit_base)
+    if FLAGS.arch in vits.__dict__.keys():
+        student = vits.__dict__[FLAGS.arch](
+            patch_size=FLAGS.patch_size,
+            drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
+        )
+        teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size)
+        embed_dim = student.embed_dim
+    # if the network is a XCiT
+    elif FLAGS.arch in torch.hub.list("facebookresearch/xcit:main"):
+        student = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch,
+                                pretrained=False, drop_path_rate=FLAGS.drop_path_rate)
+        teacher = torch.hub.load('facebookresearch/xcit:main', FLAGS.arch, pretrained=False)
+        embed_dim = student.embed_dim
+    # otherwise, we check if the architecture is in torchvision models
+    elif FLAGS.arch in torchvision_models.__dict__.keys():
+        student = torchvision_models.__dict__[FLAGS.arch]()
+        teacher = torchvision_models.__dict__[FLAGS.arch]()
+        embed_dim = student.fc.weight.shape[1]
+    else:
+        print(f"Unknow architecture: {FLAGS.arch}")
 
 
     torch.manual_seed(42)
