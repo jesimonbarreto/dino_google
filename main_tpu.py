@@ -101,15 +101,15 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        #self.update_center(teacher_output)
-        with torch.no_grad():
+        self.update_center(teacher_output)
+        '''with torch.no_grad():
             batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
             #dist.all_reduce(batch_center)
             batch_center = batch_center / (len(teacher_output)) #* dist.get_world_size())
 
             # ema update
             self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
-
+        '''
         return total_loss
 
 class DataAugmentationDINO(object):
@@ -262,7 +262,7 @@ def get_args_parser(datadir=None,
         help='Number of warmup epochs for the teacher temperature (Default: 30).')
 
     # Training/Optimization parameters
-    parser.add_argument('--use_fp16', type=utils.bool_flag, default=True, help="""Whether or not
+    parser.add_argument('--use_fp16', type=utils.bool_flag, default=False, help="""Whether or not
         to use half precision for training. Improves training time and memory requirements,
         but can provoke instability and slight decay of performance. We recommend disabling
         mixed precision if the loss is unstable, if reducing the patch size or if training with bigger ViTs.""")
@@ -465,7 +465,7 @@ def train_imagenet():
     print('PJRT execution')
     
     print('==> Preparing data..')
-    print(dist.get_world_size())
+    
     img_dim = 224
     if FLAGS.fake_data:
         train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
@@ -645,13 +645,12 @@ def train_imagenet():
                     student_output = student(data)
                     print('Depois predict train\n\n')
                     loss = dino_loss(student_output, teacher_output, step)
-                
+                    print(loss)
                     if not math.isfinite(loss.item()):
                         print("Loss is {}, stopping training".format(loss.item()), force=True)
                         sys.exit(1)
                 
                     optimizer.zero_grad()
-                    
                     param_norms = None
 
                     if fp16_scaler is None:
