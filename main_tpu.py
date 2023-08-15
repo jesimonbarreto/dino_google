@@ -568,7 +568,6 @@ def train_imagenet():
         FLAGS.warmup_teacher_temp_epochs,
         FLAGS.epochs,
     )
-    dino = dino.to(device)
     # ============ preparing optimizer ... ============
     writer = None
     if xm.is_master_ordinal():
