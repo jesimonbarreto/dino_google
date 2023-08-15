@@ -568,7 +568,7 @@ def train_imagenet():
         FLAGS.warmup_teacher_temp_epochs,
         FLAGS.epochs,
     )
-
+    dino = dino.to(device)
     # ============ preparing optimizer ... ============
     writer = None
     if xm.is_master_ordinal():
@@ -617,8 +617,6 @@ def train_imagenet():
     # momentum parameter is increased to 1. during training with a cosine schedule
     momentum_schedule = utils.cosine_scheduler(FLAGS.momentum_teacher, 1,
                                                FLAGS.epochs, len(train_loader))
-    
-    loss_fn = dino_loss
 
     if FLAGS.profile:
         server = xp.start_server(FLAGS.profiler_port)
@@ -631,10 +629,10 @@ def train_imagenet():
         for step, (data, target) in enumerate(loader):
             with xp.StepTrace('train_imagenet'):
                 with xp.Trace('build_graph'):
-                    print('Antes do predic train\n\n')
+                    print('Antes do predict train\n\n')
                     teacher_output = teacher(data[:2])
                     student_output = student(data)
-                    print('Depois predict trainn\n\n')
+                    print('Depois predict train\n\n')
                     loss = dino_loss(student_output, teacher_output, step)
                 
                     if not math.isfinite(loss.item()):
