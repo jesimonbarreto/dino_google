@@ -461,6 +461,7 @@ def train_imagenet():
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
 
     print('==> Preparing data..')
+    print(dist.get_world_size())
     img_dim = 224
     if FLAGS.fake_data:
         train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
