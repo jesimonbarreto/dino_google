@@ -679,7 +679,7 @@ def train_imagenet():
                         m = momentum_schedule[step]  # momentum parameter
                         for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                             param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                    
+                    print('Final')
                     """if lr_scheduler:
                         lr_scheduler.step()"""
                 if step % FLAGS.log_steps == 0:
