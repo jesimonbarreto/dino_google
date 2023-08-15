@@ -101,7 +101,15 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        self.update_center(teacher_output)
+        #self.update_center(teacher_output)
+        with torch.no_grad():
+            batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
+            dist.all_reduce(batch_center)
+            batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
+
+            # ema update
+            self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
+
         return total_loss
 
 class DataAugmentationDINO(object):
