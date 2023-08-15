@@ -533,11 +533,7 @@ def train_imagenet():
 
 
     torch.manual_seed(42)
-
-    device = xm.xla_device()
     
-    student = student.to(device)
-    teacher = teacher.to(device)
 
     student = utils.MultiCropWrapper(student, DINOHead(
         embed_dim,
@@ -549,6 +545,10 @@ def train_imagenet():
         teacher,
         DINOHead(embed_dim, FLAGS.out_dim, FLAGS.use_bn_in_head),
     )
+
+    device = xm.xla_device()
+    student = student.to(device)
+    teacher = teacher.to(device)
     # Initialization is nondeterministic with multiple threads in PjRt.
     # Synchronize model parameters across replicas manually.
     #if xr.using_pjrt():
