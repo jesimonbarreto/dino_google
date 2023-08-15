@@ -451,7 +451,7 @@ def _train_update(device, step, loss, tracker, epoch, writer):
         summary_writer=writer)
 
 def train_imagenet():
-    if FLAGS.pjrt_distributed:
+    '''if FLAGS.pjrt_distributed:
         import torch_xla.experimental.pjrt_backend
         dist.init_process_group('xla', init_method='pjrt://')
         print('PJRT execution')
@@ -459,7 +459,11 @@ def train_imagenet():
         print('DDP execution')
         dist.init_process_group(
             'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
+    '''
 
+    dist.init_process_group('xla', init_method='pjrt://')
+    print('PJRT execution')
+    
     print('==> Preparing data..')
     print(dist.get_world_size())
     img_dim = 224
