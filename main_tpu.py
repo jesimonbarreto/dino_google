@@ -104,7 +104,7 @@ class DINOLoss(nn.Module):
         #self.update_center(teacher_output)
         with torch.no_grad():
             batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
-            dist.all_reduce(batch_center)
+            #dist.all_reduce(batch_center)
             batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
 
             # ema update
