@@ -621,32 +621,37 @@ def train_imagenet():
         for step, (data, target) in enumerate(loader):
             #with xp.StepTrace('train_imagenet'):
             #    with xp.Trace('build_graph'):
-            print('Antes do predict train\n\n')
+            para_loader = pl.ParallelLoader(train_loader,[device]).per_device_loader(device)
             teacher_output = teacher(data[:2])
             student_output = student(data)
-            print('Depois predict train\n\n')
             loss = dino_loss(student_output, teacher_output, step)
             print(loss)
+            print('Aqui1')
             if not math.isfinite(loss.item()):
                 print("Loss is {}, stopping training".format(loss.item()), force=True)
                 sys.exit(1)
-        
+            print('Aqui2')
             optimizer.zero_grad()
-            
+            print('Aqui3')
             param_norms = None
-
+            fp16_scaler = None
             if fp16_scaler is None:
+                print('Aqui4')
                 loss.backward()
                 if FLAGS.clip_grad:
                     param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
+                print('Aqui5')
                 utils.cancel_gradients_last_layer(epoch, student,
                                                 FLAGS.freeze_last_layer)
                 if FLAGS.ddp:
                     optimizer.step()
                 else:
+                    print('Aqui6')
                     xm.optimizer_step(optimizer)
                     tracker.add(FLAGS.batch_size)
+                    print('Aqui7')
             else:
+                
                 fp16_scaler.scale(loss).backward()
                 if FLAGS.clip_grad:
                     fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
@@ -656,34 +661,19 @@ def train_imagenet():
                 fp16_scaler.step(optimizer)
                 fp16_scaler.update()
 
-
+            print('Aqui8')
             with torch.no_grad():
                 m = momentum_schedule[step]  # momentum parameter
+                print('Aqui9')
                 for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                     param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-            
-            """if lr_scheduler:
-                lr_scheduler.step()"""
+            print('Aqui10')
+            if lr_scheduler:
+                lr_scheduler.step()
             if step % FLAGS.log_steps == 0:
                 xm.add_step_closure(
                     _train_update, args=(device, step, loss, tracker, epoch, writer))
         print('Finalizou')
-    #Test Functions
-    def test_loop_fn(loader, epoch):
-        total_samples, correct = 0, 0
-        model.eval()
-        for step, (data, target) in enumerate(loader):
-            output = model(data)
-            pred = output.max(1, keepdim=True)[1]
-            correct += pred.eq(target.view_as(pred)).sum()
-            total_samples += data.size()[0]
-            if step % FLAGS.log_steps == 0:
-                xm.add_step_closure(
-                test_utils.print_test_update, args=(device, None, epoch, step))
-        accuracy = 100.0 * correct.item() / total_samples
-        accuracy = xm.mesh_reduce('test_accuracy', accuracy, np.mean)
-        return accuracy
-
     #Devices
     train_device_loader = pl.MpDeviceLoader(
         train_loader,
