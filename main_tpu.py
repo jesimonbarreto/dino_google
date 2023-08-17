@@ -26,7 +26,7 @@ torchvision_archs = sorted(name for name in torchvision_models.__dict__
     and callable(torchvision_models.__dict__[name]))
 
 import os
-import schedulers
+#import schedulers
 import numpy as np
 import torch
 import torch.nn as nn
@@ -102,14 +102,7 @@ class DINOLoss(nn.Module):
                 n_loss_terms += 1
         total_loss /= n_loss_terms
         self.update_center(teacher_output)
-        '''with torch.no_grad():
-            batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
-            #dist.all_reduce(batch_center)
-            batch_center = batch_center / (len(teacher_output)) #* dist.get_world_size())
 
-            # ema update
-            self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
-        '''
         return total_loss
 
 class DataAugmentationDINO(object):
@@ -216,7 +209,7 @@ MODEL_OPTS = {
 
 def get_args_parser(datadir=None,
                          logdir=None,
-                         num_cores=None,
+                         num_cores=8,
                          batch_size=128,
                          num_epochs=10,
                          num_workers=4,
@@ -399,7 +392,7 @@ OPTIMIZED_KWARGS = {
             prefetch_factor=32,
             loader_prefetch_size=128,
             device_prefetch_size=1,
-            num_workers=16,
+            num_workers=8,
             host_to_device_transfer_threads=4,
         )
 }
@@ -451,16 +444,7 @@ def _train_update(device, step, loss, tracker, epoch, writer):
         summary_writer=writer)
 
 def train_imagenet():
-    '''if FLAGS.pjrt_distributed:
-        import torch_xla.experimental.pjrt_backend
-        dist.init_process_group('xla', init_method='pjrt://')
-        print('PJRT execution')
-    elif FLAGS.ddp:
-        print('DDP execution')
-        dist.init_process_group(
-            'xla', world_size=xm.xrt_world_size(), rank=xm.get_ordinal())
-    '''
-
+    
     dist.init_process_group('xla', init_method='pjrt://')
     print('PJRT execution')
     
@@ -542,9 +526,6 @@ def train_imagenet():
         embed_dim = student.fc.weight.shape[1]
     else:
         print(f"Unknow architecture: {FLAGS.arch}")
-
-
-    torch.manual_seed(42)
     
 
     student = utils.MultiCropWrapper(student, DINOHead(
@@ -638,54 +619,55 @@ def train_imagenet():
         teacher.train()
         student.train()
         for step, (data, target) in enumerate(loader):
-            with xp.StepTrace('train_imagenet'):
-                with xp.Trace('build_graph'):
-                    print('Antes do predict train\n\n')
-                    teacher_output = teacher(data[:2])
-                    student_output = student(data)
-                    print('Depois predict train\n\n')
-                    loss = dino_loss(student_output, teacher_output, step)
-                    print(loss)
-                    if not math.isfinite(loss.item()):
-                        print("Loss is {}, stopping training".format(loss.item()), force=True)
-                        sys.exit(1)
-                
-                    optimizer.zero_grad()
-                    
-                    param_norms = None
+            #with xp.StepTrace('train_imagenet'):
+            #    with xp.Trace('build_graph'):
+            print('Antes do predict train\n\n')
+            teacher_output = teacher(data[:2])
+            student_output = student(data)
+            print('Depois predict train\n\n')
+            loss = dino_loss(student_output, teacher_output, step)
+            print(loss)
+            if not math.isfinite(loss.item()):
+                print("Loss is {}, stopping training".format(loss.item()), force=True)
+                sys.exit(1)
+        
+            optimizer.zero_grad()
+            
+            param_norms = None
 
-                    if fp16_scaler is None:
-                        loss.backward()
-                        if FLAGS.clip_grad:
-                            param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
-                        utils.cancel_gradients_last_layer(epoch, student,
-                                                        FLAGS.freeze_last_layer)
-                        if FLAGS.ddp:
-                            optimizer.step()
-                        else:
-                            xm.optimizer_step(optimizer)
-                            tracker.add(FLAGS.batch_size)
-                    else:
-                        fp16_scaler.scale(loss).backward()
-                        if FLAGS.clip_grad:
-                            fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                            param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
-                        utils.cancel_gradients_last_layer(epoch, student,
-                                                        FLAGS.freeze_last_layer)
-                        fp16_scaler.step(optimizer)
-                        fp16_scaler.update()
+            if fp16_scaler is None:
+                loss.backward()
+                if FLAGS.clip_grad:
+                    param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
+                utils.cancel_gradients_last_layer(epoch, student,
+                                                FLAGS.freeze_last_layer)
+                if FLAGS.ddp:
+                    optimizer.step()
+                else:
+                    xm.optimizer_step(optimizer)
+                    tracker.add(FLAGS.batch_size)
+            else:
+                fp16_scaler.scale(loss).backward()
+                if FLAGS.clip_grad:
+                    fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+                    param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
+                utils.cancel_gradients_last_layer(epoch, student,
+                                                FLAGS.freeze_last_layer)
+                fp16_scaler.step(optimizer)
+                fp16_scaler.update()
 
 
-                    with torch.no_grad():
-                        m = momentum_schedule[step]  # momentum parameter
-                        for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
-                            param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-                    
-                    """if lr_scheduler:
-                        lr_scheduler.step()"""
-                if step % FLAGS.log_steps == 0:
-                    xm.add_step_closure(
-                        _train_update, args=(device, step, loss, tracker, epoch, writer))
+            with torch.no_grad():
+                m = momentum_schedule[step]  # momentum parameter
+                for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
+                    param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
+            
+            """if lr_scheduler:
+                lr_scheduler.step()"""
+            if step % FLAGS.log_steps == 0:
+                xm.add_step_closure(
+                    _train_update, args=(device, step, loss, tracker, epoch, writer))
+        print('Finalizou')
     #Test Functions
     def test_loop_fn(loader, epoch):
         total_samples, correct = 0, 0
@@ -744,11 +726,12 @@ def _mp_fn(index, flags):
     FLAGS = flags
     torch.set_default_tensor_type('torch.FloatTensor')
     accuracy = train_imagenet()
+    print("{} accuracy final".format(accuracy))
     if accuracy < FLAGS.target_accuracy:
         print('Accuracy {} is below target {}'.format(accuracy,
                                                   FLAGS.target_accuracy))
         sys.exit(21)
-
+    print('Finalizou')
 
 if __name__ == '__main__':
     xmp.spawn(_mp_fn, args=(FLAGS,), nprocs=FLAGS.num_cores)
