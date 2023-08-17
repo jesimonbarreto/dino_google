@@ -621,7 +621,7 @@ def train_imagenet():
         for step, (data, target) in enumerate(loader):
             #with xp.StepTrace('train_imagenet'):
             #    with xp.Trace('build_graph'):
-            para_loader = pl.ParallelLoader(train_loader,[device]).per_device_loader(device)
+            #para_loader = pl.ParallelLoader(train_loader,[device]).per_device_loader(device)
             teacher_output = teacher(data[:2])
             student_output = student(data)
             loss = dino_loss(student_output, teacher_output, step)
