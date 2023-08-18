@@ -210,7 +210,7 @@ MODEL_OPTS = {
 def get_args_parser(datadir=None,
                          logdir=None,
                          num_cores=8,
-                         batch_size=128,
+                         batch_size=1,
                          num_epochs=10,
                          num_workers=4,
                          log_steps=20,
@@ -267,7 +267,7 @@ def get_args_parser(datadir=None,
     parser.add_argument('--clip_grad', type=float, default=3.0, help="""Maximal parameter
         gradient norm if using gradient clipping. Clipping with norm .3 ~ 1.0 can
         help optimization for larger ViT architectures. 0 for disabling.""")
-    parser.add_argument('--batch_size_per_gpu', default=64, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=1, type=int,
         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
@@ -344,7 +344,7 @@ FLAGS = get_args_parser(
 )
 
 DEFAULT_KWARGS = dict(
-    batch_size=128,
+    batch_size=1,
     patch_size=16,
     out_dim=65536,
     norm_last_layer=True,
@@ -382,8 +382,8 @@ DEFAULT_KWARGS = dict(
 OPTIMIZED_KWARGS = {
     'tpuv4':
         dict(
-            batch_size=128,
-            test_set_batch_size=128,
+            batch_size=1,
+            test_set_batch_size=1,
             num_epochs=18,
             momentum=0.9,
             lr=0.1,
