@@ -154,14 +154,6 @@ def train_mnist(flags,
     tracker = xm.RateTracker()
     model.train()
     for step, (data, target) in enumerate(loader):
-      if dynamic_graph:
-        # testing purpose only: dynamic batch size and graph.
-        index = max(-step, -flags.batch_size + 1)  # non-empty
-        data, target = data[:-index, :, :, :], target[:-index]
-      if step >= 15 and training_started:
-        # testing purpose only: set event for synchronization.
-        training_started.set()
-
       with xp.StepTrace('train_mnist', step_num=step):
         with xp.Trace('build_graph'):
           optimizer.zero_grad()
