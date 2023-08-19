@@ -275,7 +275,7 @@ def train_mnist(flags,
         with xp.Trace('build_graph'):
           optimizer.zero_grad()
           s_out = student(data)
-          t_out = teacher(data[:2])
+          t_out = teacher(data)
           loss = dino_loss(s_out, t_out, step)
           loss.backward()
         xm.optimizer_step(optimizer)
