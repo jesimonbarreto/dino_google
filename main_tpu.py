@@ -179,7 +179,7 @@ MODEL_OPTS = {
     '--ddp': {
         'action': 'store_true',
     },
-    # Use pjrt:// init_method instead of env:// for `torch.distributed`.
+    # Use pjrt:// init_method ibatchnstead of env:// for `torch.distributed`.
     # Required for DDP on TPU v2/v3 when using PJRT.
     '--pjrt_distributed': {
         'action': 'store_true',
@@ -384,15 +384,15 @@ OPTIMIZED_KWARGS = {
         dict(
             batch_size=1,
             test_set_batch_size=1,
-            num_epochs=18,
+            num_epochs=1,
             momentum=0.9,
             lr=0.1,
             target_accuracy=0.0,
             persistent_workers=True,
-            prefetch_factor=32,
-            loader_prefetch_size=128,
+            prefetch_factor=1,
+            loader_prefetch_size=1,
             device_prefetch_size=1,
-            num_workers=8,
+            num_workers=4,
             host_to_device_transfer_threads=4,
         )
 }
@@ -626,40 +626,25 @@ def train_imagenet():
             student_output = student(data)
             loss = dino_loss(student_output, teacher_output, step)
             print(loss)
-            print('Aqui1')
             if not math.isfinite(loss.item()):
                 print("Loss is {}, stopping training".format(loss.item()), force=True)
                 sys.exit(1)
-            print('Aqui2')
+            
             optimizer.zero_grad()
-            print('Aqui3')
             param_norms = None
-            fp16_scaler = None
-            if fp16_scaler is None:
-                print('Aqui4')
-                loss.backward()
-                if FLAGS.clip_grad:
-                    param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
-                print('Aqui5')
-                utils.cancel_gradients_last_layer(epoch, student,
-                                                FLAGS.freeze_last_layer)
-                if FLAGS.ddp:
-                    optimizer.step()
-                else:
-                    print('Aqui6')
-                    xm.optimizer_step(optimizer)
-                    tracker.add(FLAGS.batch_size)
-                    print('Aqui7')
+            loss.backward()
+            if FLAGS.clip_grad:
+                param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
+            print('Aqui5')
+            utils.cancel_gradients_last_layer(epoch, student,
+                                            FLAGS.freeze_last_layer)
+            if FLAGS.ddp:
+                optimizer.step()
             else:
-                
-                fp16_scaler.scale(loss).backward()
-                if FLAGS.clip_grad:
-                    fp16_scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
-                    param_norms = utils.clip_gradients(student, FLAGS.clip_grad)
-                utils.cancel_gradients_last_layer(epoch, student,
-                                                FLAGS.freeze_last_layer)
-                fp16_scaler.step(optimizer)
-                fp16_scaler.update()
+                print('Aqui6')
+                xm.optimizer_step(optimizer)
+                tracker.add(FLAGS.batch_size)
+                print('Aqui7')
 
             print('Aqui8')
             with torch.no_grad():
@@ -714,6 +699,7 @@ def train_imagenet():
 def _mp_fn(index, flags):
     global FLAGS
     FLAGS = flags
+    print(FLAGS)
     torch.set_default_tensor_type('torch.FloatTensor')
     accuracy = train_imagenet()
     print("{} accuracy final".format(accuracy))
