@@ -261,7 +261,7 @@ def train_mnist(flags,
         FLAGS.warmup_teacher_temp,
         FLAGS.teacher_temp,
         FLAGS.warmup_teacher_temp_epochs,
-        FLAGS.epochs,
+        FLAGS.num_epochs,
   )
 
   server = xp.start_server(flags.profiler_port)
