@@ -88,7 +88,7 @@ def train_mnist(flags,
   
   if flags.fake_data:
     img_dim = 224
-    train_dataset_len = 12000000  # Roughly the size of Imagenet dataset.
+    train_dataset_len = 1200000  # Roughly the size of Imagenet dataset.
     train_loader = xu.SampleGenerator(
         data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
             torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
