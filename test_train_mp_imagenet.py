@@ -85,18 +85,19 @@ def train_mnist(flags,
                 dynamic_graph=False,
                 fetch_often=False):
   torch.manual_seed(1)
-
+  
   if flags.fake_data:
+    img_dim = 224
+    train_dataset_len = 12000  # Roughly the size of Imagenet dataset.
     train_loader = xu.SampleGenerator(
-        data=(torch.zeros(flags.batch_size, 1, 28,
-                          28), torch.zeros(flags.batch_size,
-                                           dtype=torch.int64)),
-        sample_count=600000 // flags.batch_size // xm.xrt_world_size())
+        data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
+            torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
+        sample_count=train_dataset_len // FLAGS.batch_size //
+        xm.xrt_world_size())
     test_loader = xu.SampleGenerator(
-        data=(torch.zeros(flags.batch_size, 1, 28,
-                          28), torch.zeros(flags.batch_size,
-                                           dtype=torch.int64)),
-        sample_count=100000 // flags.batch_size // xm.xrt_world_size())
+        data=(torch.zeros(FLAGS.test_set_batch_size, 3, img_dim, img_dim),
+                torch.zeros(FLAGS.test_set_batch_size, dtype=torch.int64)),
+                sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
   else:
     train_dataset = datasets.MNIST(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
