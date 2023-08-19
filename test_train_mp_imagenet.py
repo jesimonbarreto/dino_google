@@ -13,7 +13,11 @@ FLAGS = args_parse.parse_common_options(
 FLAGS.arch = 'vit_tiny'
 FLAGS.patch_size = 16
 FLAGS.drop_path_rate = 0.1
-
+FLAGS.out_dim=65536
+FLAGS.local_crops_number=8
+FLAGS.warmup_teacher_temp=0.04
+FLAGS.teacher_temp=0.04
+FLAGS.warmup_teacher_temp_epochs=0
 
 import os
 import shutil
