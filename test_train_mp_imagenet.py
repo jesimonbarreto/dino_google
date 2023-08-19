@@ -1,4 +1,4 @@
-#from torch_xla import runtime as xr
+from torch_xla import runtime as xr
 import args_parse
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
