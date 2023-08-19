@@ -95,8 +95,8 @@ def train_mnist(flags,
         sample_count=train_dataset_len // FLAGS.batch_size //
         xm.xrt_world_size())
     test_loader = xu.SampleGenerator(
-        data=(torch.zeros(FLAGS.test_set_batch_size, 3, img_dim, img_dim),
-                torch.zeros(FLAGS.test_set_batch_size, dtype=torch.int64)),
+        data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
+                torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
                 sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
   else:
     train_dataset = datasets.MNIST(
