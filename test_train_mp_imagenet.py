@@ -1,4 +1,54 @@
 #from torch_xla import runtime as xr
+import argparse
+import os
+import sys
+import datetime
+import time
+import math
+import json
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+import torch.backends.cudnn as cudnn
+import torch.nn.functional as F
+from torchvision import datasets, transforms
+from torchvision import models as torchvision_models
+
+import utils
+import vision_transformer as vits
+from vision_transformer import DINOHead
+
+torchvision_archs = sorted(name for name in torchvision_models.__dict__
+    if name.islower() and not name.startswith("__")
+    and callable(torchvision_models.__dict__[name]))
+
+import os
+#import schedulers
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+import torch_xla
+import torch_xla.debug.metrics as met
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.debug.profiler as xp
+import torch_xla.utils.utils as xu
+import torch_xla.core.xla_model as xm
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.test.test_utils as test_utils
+
+import torch.distributed as dist
+import torch_xla.distributed.xla_backend
+import torch_xla.experimental.pjrt_backend
+import torch_xla.experimental.pjrt as pjrt
 import args_parse
 import numpy as np
 from PIL import Image
