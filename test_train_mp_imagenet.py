@@ -104,6 +104,8 @@ FLAGS = args_parse.parse_common_options(
 )
 
 FLAGS.arch = 'vit_tiny'
+FLAGS.patch_size = 16
+FLAGS.drop_path_rate = 0.1
 
 import os
 import schedulers
