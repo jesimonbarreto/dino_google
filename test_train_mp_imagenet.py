@@ -1,4 +1,4 @@
-from torch_xla import runtime as xr
+#from torch_xla import runtime as xr
 import args_parse
 import numpy as np
 from PIL import Image
