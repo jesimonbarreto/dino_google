@@ -32,6 +32,8 @@ import torch_xla.core.xla_model as xm
 import torch_xla.debug.profiler as xp
 import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.test.test_utils as test_utils
+from torchvision import datasets, transforms
+from torchvision import models as torchvision_models
 
 import utils
 import vision_transformer as vits
