@@ -10,6 +10,11 @@ FLAGS = args_parse.parse_common_options(
     num_epochs=18,
     profiler_port=9012)
 
+FLAGS.arch = 'vit_tiny'
+FLAGS.patch_size = 16
+FLAGS.drop_path_rate = 0.1
+
+
 import os
 import shutil
 import sys
@@ -27,6 +32,15 @@ import torch_xla.core.xla_model as xm
 import torch_xla.debug.profiler as xp
 import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.test.test_utils as test_utils
+
+import utils
+import vision_transformer as vits
+from vision_transformer import DINOHead
+
+torchvision_archs = sorted(name for name in torchvision_models.__dict__
+    if name.islower() and not name.startswith("__")
+    and callable(torchvision_models.__dict__[name]))
+
 
 
 class MNIST(nn.Module):
@@ -121,7 +135,10 @@ def train_mnist(flags,
   lr = flags.lr * xm.xrt_world_size()
 
   device = xm.xla_device()
-  model = MNIST().to(device)
+  model = vits.__dict__[FLAGS.arch](
+            patch_size=FLAGS.patch_size,
+            drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
+        ).to(device)
   writer = None
   if xm.is_master_ordinal():
     writer = test_utils.get_summary_writer(flags.logdir)
@@ -198,6 +215,8 @@ def train_mnist(flags,
 
 
 def _mp_fn(index, flags):
+  global FLAGS
+  FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
