@@ -195,11 +195,6 @@ def train_mnist(flags,
                 fetch_often=False):
   torch.manual_seed(1)
   
-  transform = DataAugmentationDINO(
-        FLAGS.global_crops_scale,
-        FLAGS.local_crops_scale,
-        FLAGS.local_crops_number,
-  )
 
   if flags.fake_data:
     img_dim = 224
@@ -216,6 +211,11 @@ def train_mnist(flags,
     #            torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
     #            sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
   else:
+    transform = DataAugmentationDINO(
+        FLAGS.global_crops_scale,
+        FLAGS.local_crops_scale,
+        FLAGS.local_crops_number,
+    )
     train_dataset = datasets.MNIST(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=True,
