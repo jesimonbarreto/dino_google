@@ -45,7 +45,7 @@ import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.test.test_utils as test_utils
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
-
+import tensorflow
 import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
