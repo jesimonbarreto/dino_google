@@ -260,7 +260,7 @@ def train_mnist(flags,
             patch_size=FLAGS.patch_size,
             drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
         )
-  teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size).to(device)
+  teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size)
   embed_dim = student.embed_dim
   student = utils.MultiCropWrapper(student, DINOHead(
         embed_dim,
@@ -275,7 +275,6 @@ def train_mnist(flags,
   device = xm.xla_device()
   student.to(device)
   teacher.to(device)
-  
   
   
   writer = None
