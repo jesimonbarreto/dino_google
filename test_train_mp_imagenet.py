@@ -23,6 +23,14 @@ FLAGS.local_crops_scale=(0.05, 0.4)
 FLAGS.use_bn_in_head=False
 FLAGS.norm_last_layer=True
 
+import torch_xla
+import torch_xla.debug.metrics as met
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.utils.utils as xu
+import torch_xla.core.xla_model as xm
+import torch_xla.debug.profiler as xp
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.test.test_utils as test_utils
 import os
 import shutil
 import sys
@@ -35,17 +43,7 @@ import torch.distributed as dist
 import torch.optim as optim
 from torchvision import datasets, transforms
 import torch.distributed as dist
-import torch_xla
-import torch_xla.debug.metrics as met
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.utils.utils as xu
-import torch_xla.core.xla_model as xm
-import torch_xla.debug.profiler as xp
-import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.test.test_utils as test_utils
-from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
-import tensorflow
 import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
