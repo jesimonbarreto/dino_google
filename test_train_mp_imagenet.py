@@ -20,6 +20,8 @@ FLAGS.teacher_temp=0.04
 FLAGS.warmup_teacher_temp_epochs=0
 FLAGS.global_crops_scale=(0.4, 1.)
 FLAGS.local_crops_scale=(0.05, 0.4)
+FLAGS.use_bn_in_head=False
+FLAGS.norm_last_layer=True
 
 import os
 import shutil
