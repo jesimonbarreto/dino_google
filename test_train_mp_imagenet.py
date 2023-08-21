@@ -11,7 +11,7 @@ FLAGS = args_parse.parse_common_options(
     profiler_port=9012)
 
 FLAGS.arch = 'vit_tiny'
-FLAGS.patch_size = 16
+FLAGS.patch_size = 8
 FLAGS.drop_path_rate = 0.1
 FLAGS.out_dim=65536
 FLAGS.local_crops_number=8
