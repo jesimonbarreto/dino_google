@@ -34,6 +34,7 @@ import torch.nn.functional as F
 import torch.distributed as dist
 import torch.optim as optim
 from torchvision import datasets, transforms
+import torch.distributed as dist
 import torch_xla
 import torch_xla.debug.metrics as met
 import torch_xla.distributed.parallel_loader as pl
@@ -360,6 +361,7 @@ def _mp_fn(index, flags):
   global FLAGS
   FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
+  dist.init_process_group("xla", init_method='pjrt://')
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
