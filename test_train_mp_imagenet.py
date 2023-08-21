@@ -3,7 +3,7 @@ import args_parse
 
 FLAGS = args_parse.parse_common_options(
     datadir='/tmp/cifar10-data',
-    batch_size=16,
+    batch_size=1,
     momentum=0.5,
     lr=0.01,
     target_accuracy=98.0,
