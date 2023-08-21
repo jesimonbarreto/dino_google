@@ -2,7 +2,7 @@
 import args_parse
 
 FLAGS = args_parse.parse_common_options(
-    datadir='/tmp/mnist-data',
+    datadir='/tmp/cifar10-data',
     batch_size=16,
     momentum=0.5,
     lr=0.01,
@@ -216,12 +216,12 @@ def train_mnist(flags,
         FLAGS.local_crops_scale,
         FLAGS.local_crops_number,
     )
-    train_dataset = datasets.MNIST(
+    train_dataset = datasets.CIFAR10(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=True,
         download=True,
         transform=transform)
-    test_dataset = datasets.MNIST(
+    test_dataset = datasets.CIFAR10(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=False,
         download=True,
