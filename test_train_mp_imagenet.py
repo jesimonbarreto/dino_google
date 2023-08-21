@@ -197,7 +197,8 @@ def train_mnist(flags,
                 dynamic_graph=False,
                 fetch_often=False):
   torch.manual_seed(1)
-  
+  import torch_xla.experimental.pjrt_backend
+  dist.init_process_group('xla', init_method='pjrt://')
 
   if flags.fake_data:
     img_dim = 224
@@ -361,7 +362,6 @@ def _mp_fn(index, flags):
   global FLAGS
   FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
-  dist.init_process_group("xla", init_method='pjrt://')
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
