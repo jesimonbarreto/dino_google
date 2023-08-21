@@ -18,11 +18,14 @@ FLAGS.local_crops_number=8
 FLAGS.warmup_teacher_temp=0.04
 FLAGS.teacher_temp=0.04
 FLAGS.warmup_teacher_temp_epochs=0
+FLAGS.global_crops_scale=(0.4, 1.)
+FLAGS.local_crops_scale=(0.05, 0.4)
 
 import os
 import shutil
 import sys
 import numpy as np
+from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -192,18 +195,26 @@ def train_mnist(flags,
                 fetch_often=False):
   torch.manual_seed(1)
   
+  transform = DataAugmentationDINO(
+        FLAGS.global_crops_scale,
+        FLAGS.local_crops_scale,
+        FLAGS.local_crops_number,
+  )
+
   if flags.fake_data:
     img_dim = 224
     train_dataset_len = 12000  # Roughly the size of Imagenet dataset.
+    
     train_loader = xu.SampleGenerator(
         data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
             torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
         sample_count=train_dataset_len // FLAGS.batch_size //
-        xm.xrt_world_size())
-    test_loader = xu.SampleGenerator(
-        data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
-                torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
-                sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
+        xm.xrt_world_size(), transform=transform)
+    
+    #test_loader = xu.SampleGenerator(
+    #    data=(torch.zeros(FLAGS.batch_size, 3, img_dim, img_dim),
+    #            torch.zeros(FLAGS.batch_size, dtype=torch.int64)),
+    #            sample_count=50000 // FLAGS.batch_size // xm.xrt_world_size())
   else:
     train_dataset = datasets.MNIST(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
