@@ -216,16 +216,19 @@ def train_mnist(flags,
         FLAGS.local_crops_scale,
         FLAGS.local_crops_number,
     )
+
     train_dataset = datasets.CIFAR10(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=True,
         download=True,
         transform=transform)
+    
     test_dataset = datasets.CIFAR10(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=False,
         download=True,
         transform=transform)
+    
     train_sampler = None
     if xm.xrt_world_size() > 1:
       train_sampler = torch.utils.data.distributed.DistributedSampler(
@@ -233,6 +236,7 @@ def train_mnist(flags,
           num_replicas=xm.xrt_world_size(),
           rank=xm.get_ordinal(),
           shuffle=True)
+    
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=flags.batch_size,
@@ -240,6 +244,7 @@ def train_mnist(flags,
         drop_last=flags.drop_last,
         shuffle=False if train_sampler else True,
         num_workers=flags.num_workers)
+    
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=flags.batch_size,
@@ -250,13 +255,29 @@ def train_mnist(flags,
   # Scale learning rate to num cores
   lr = flags.lr * xm.xrt_world_size()
 
-  device = xm.xla_device()
+  
   student = vits.__dict__[FLAGS.arch](
             patch_size=FLAGS.patch_size,
             drop_path_rate=FLAGS.drop_path_rate,  # stochastic depth
-        ).to(device)
+        )
   teacher = vits.__dict__[FLAGS.arch](patch_size=FLAGS.patch_size).to(device)
   embed_dim = student.embed_dim
+  student = utils.MultiCropWrapper(student, DINOHead(
+        embed_dim,
+        flags.out_dim,
+        use_bn=flags.use_bn_in_head,
+        norm_last_layer=flags.norm_last_layer,
+    ))
+  teacher = utils.MultiCropWrapper(
+        teacher,
+        DINOHead(embed_dim, flags.out_dim, flags.use_bn_in_head),
+    )
+  device = xm.xla_device()
+  student.to(device)
+  teacher.to(device)
+  
+  
+  
   writer = None
   if xm.is_master_ordinal():
     writer = test_utils.get_summary_writer(flags.logdir)
@@ -282,7 +303,7 @@ def train_mnist(flags,
         with xp.Trace('build_graph'):
           optimizer.zero_grad()
           s_out = student(data)
-          t_out = teacher(data)
+          t_out = teacher(data[:2])
           loss = dino_loss(s_out, t_out, step)
           loss.backward()
         xm.optimizer_step(optimizer)
