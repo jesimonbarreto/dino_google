@@ -3,7 +3,7 @@ import args_parse
 
 FLAGS = args_parse.parse_common_options(
     datadir='/tmp/mnist-data',
-    batch_size=128,
+    batch_size=16,
     momentum=0.5,
     lr=0.01,
     target_accuracy=98.0,
@@ -220,16 +220,12 @@ def train_mnist(flags,
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=True,
         download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(),
-             transforms.Normalize((0.1307,), (0.3081,))]))
+        transform=transform)
     test_dataset = datasets.MNIST(
         os.path.join(flags.datadir, str(xm.get_ordinal())),
         train=False,
         download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(),
-             transforms.Normalize((0.1307,), (0.3081,))]))
+        transform=transform)
     train_sampler = None
     if xm.xrt_world_size() > 1:
       train_sampler = torch.utils.data.distributed.DistributedSampler(
