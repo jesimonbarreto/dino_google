@@ -361,7 +361,7 @@ def _mp_fn(rank, flags):
   torch.set_default_tensor_type('torch.FloatTensor')
   print("Starting train method on rank: {}".format(rank))
   dist.init_process_group(
-        backend='nccl', world_size=FLAGS['world_size'], init_method='env://',
+        backend='nccl', world_size=1, init_method='env://',
         rank=rank)
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
