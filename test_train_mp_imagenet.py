@@ -294,7 +294,7 @@ def train_mnist(flags,
 
   server = xp.start_server(flags.profiler_port)
 
-  def train_loop_fn(loader):
+  def train_loop_fn(loader, epoch):
     tracker = xm.RateTracker()
     student.train()
     teacher.train()
@@ -304,7 +304,7 @@ def train_mnist(flags,
           optimizer.zero_grad()
           s_out = student(data)
           t_out = teacher(data[:2])
-          loss = dino_loss(s_out, t_out, step)
+          loss = dino_loss(s_out, t_out, epoch)
           loss.backward()
         xm.optimizer_step(optimizer)
         if fetch_often:
@@ -335,7 +335,7 @@ def train_mnist(flags,
   accuracy, max_accuracy = 0.0, 0.0
   for epoch in range(1, flags.num_epochs + 1):
     xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
-    train_loop_fn(train_device_loader)
+    train_loop_fn(train_device_loader, epoch)
     xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
 
     accuracy = test_loop_fn(test_device_loader)
@@ -359,7 +359,7 @@ def _mp_fn(rank, flags):
   global FLAGS
   FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
-  print("Starting train method on rank: {}".format(rank))
+  #print("Starting train method on rank: {}".format(rank))
   #dist.init_process_group(
   #      backend='nccl', world_size=1, init_method='env://',
   #      rank=rank)
