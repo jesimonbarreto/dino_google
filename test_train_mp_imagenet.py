@@ -104,7 +104,7 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        self.update_center(teacher_output)
+        #self.update_center(teacher_output)
 
         return total_loss
 
@@ -196,8 +196,7 @@ def train_mnist(flags,
                 fetch_often=False):
   torch.manual_seed(1)
   #import torch_xla.experimental.pjrt_backend
-  dist.init_process_group('xla', init_method='pjrt://')
-
+  #dist.init_process_group('xla', init_method='pjrt://')
   if flags.fake_data:
     img_dim = 224
     train_dataset_len = 12000  # Roughly the size of Imagenet dataset.
@@ -356,10 +355,14 @@ def train_mnist(flags,
   return max_accuracy
 
 
-def _mp_fn(index, flags):
+def _mp_fn(rank, flags):
   global FLAGS
   FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
+  print("Starting train method on rank: {}".format(rank))
+  dist.init_process_group(
+        backend='nccl', world_size=FLAGS['world_size'], init_method='env://',
+        rank=rank)
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
