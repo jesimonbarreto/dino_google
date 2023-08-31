@@ -230,6 +230,10 @@ def train_mnist(flags,
         download=True,
         transform=transform)
     
+    print('len Train dataset {}'.format(len(train_dataset)))
+    print('len Train dataset {}'.format(len(test_dataset)))
+    print('batch {}'.format(flags.batch_size))
+    
     train_sampler = None
     if xm.xrt_world_size() > 1:
       train_sampler = torch.utils.data.distributed.DistributedSampler(
