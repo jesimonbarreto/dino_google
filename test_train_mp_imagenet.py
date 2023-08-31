@@ -333,7 +333,7 @@ def train_mnist(flags,
   train_device_loader = pl.MpDeviceLoader(train_loader, device)
   test_device_loader = pl.MpDeviceLoader(test_loader, device)
   accuracy, max_accuracy = 0.0, 0.0
-  for epoch in range(1, flags.num_epochs + 1):
+  for epoch in range(0, flags.num_epochs):
     xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
     train_loop_fn(train_device_loader, epoch)
     xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
