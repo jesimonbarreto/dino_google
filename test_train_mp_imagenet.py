@@ -104,7 +104,7 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        #self.update_center(teacher_output)
+        self.update_center(teacher_output)
 
         return total_loss
 
