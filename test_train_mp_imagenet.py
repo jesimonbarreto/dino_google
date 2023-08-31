@@ -104,7 +104,7 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        self.update_center(teacher_output)
+        #self.update_center(teacher_output)
 
         return total_loss
 
@@ -360,9 +360,9 @@ def _mp_fn(rank, flags):
   FLAGS = flags
   torch.set_default_tensor_type('torch.FloatTensor')
   print("Starting train method on rank: {}".format(rank))
-  dist.init_process_group(
-        backend='nccl', world_size=1, init_method='env://',
-        rank=rank)
+  #dist.init_process_group(
+  #      backend='nccl', world_size=1, init_method='env://',
+  #      rank=rank)
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
