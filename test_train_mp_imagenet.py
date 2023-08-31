@@ -303,6 +303,7 @@ def train_mnist(flags,
     student.train()
     teacher.train()
     for step, (data, target) in enumerate(loader):
+      print('size data {}'.format(len(data)))
       with xp.StepTrace('train_mnist', step_num=step):
         with xp.Trace('build_graph'):
           optimizer.zero_grad()
