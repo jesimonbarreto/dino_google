@@ -196,7 +196,7 @@ def train_mnist(flags,
                 fetch_often=False):
   torch.manual_seed(1)
   #import torch_xla.experimental.pjrt_backend
-  #dist.init_process_group('xla', init_method='pjrt://')
+  dist.init_process_group('xla', init_method='pjrt://')
 
   if flags.fake_data:
     img_dim = 224
