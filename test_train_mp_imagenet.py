@@ -22,6 +22,7 @@ FLAGS.global_crops_scale=(0.4, 1.)
 FLAGS.local_crops_scale=(0.05, 0.4)
 FLAGS.use_bn_in_head=False
 FLAGS.norm_last_layer=True
+FLAGS.dir_save_logs='/home/jesimonbarreto/log_train/'
 
 import torch_xla
 import torch_xla.debug.metrics as met
@@ -39,14 +40,16 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
 import torch.optim as optim
 from torchvision import datasets, transforms
-import torch.distributed as dist
 from torchvision import models as torchvision_models
+from torch.utils.tensorboard import SummaryWriter
 import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
+
+writer = SummaryWriter(FLAGS.dir_save_logs)
+
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
@@ -226,14 +229,7 @@ def train_mnist(flags,
         download=True,
         transform=transform)
     
-    test_dataset = datasets.CIFAR10(
-        os.path.join(flags.datadir, str(xm.get_ordinal())),
-        train=False,
-        download=True,
-        transform=transform)
-    
     print('len Train dataset {}'.format(len(train_dataset)))
-    print('len Train dataset {}'.format(len(test_dataset)))
     print('batch {}'.format(flags.batch_size))
     
     train_sampler = None
@@ -250,13 +246,6 @@ def train_mnist(flags,
         sampler=train_sampler,
         drop_last=flags.drop_last,
         shuffle=False if train_sampler else True,
-        num_workers=flags.num_workers)
-    
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=flags.batch_size,
-        drop_last=flags.drop_last,
-        shuffle=False,
         num_workers=flags.num_workers)
 
   # Scale learning rate to num cores
@@ -312,6 +301,7 @@ def train_mnist(flags,
           s_out = student(data)
           t_out = teacher(data[:2])
           loss = dino_loss(s_out, t_out, epoch)
+          writer.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
           loss.backward()
         xm.optimizer_step(optimizer)
         if fetch_often:
@@ -338,7 +328,7 @@ def train_mnist(flags,
     return accuracy
 
   train_device_loader = pl.MpDeviceLoader(train_loader, device)
-  test_device_loader = pl.MpDeviceLoader(test_loader, device)
+  #test_device_loader = pl.MpDeviceLoader(test_loader, device)
   accuracy, max_accuracy = 0.0, 0.0
   for epoch in range(1, flags.num_epochs + 1):
     xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
@@ -372,6 +362,8 @@ def _mp_fn(rank, flags):
   #      backend='nccl', world_size=1, init_method='env://',
   #      rank=rank)
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
+  writer.flush()
+  writer.close()
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
   if accuracy < flags.target_accuracy:
