@@ -301,7 +301,8 @@ def train_mnist(flags,
           s_out = student(data)
           t_out = teacher(data[:2])
           loss = dino_loss(s_out, t_out, epoch)
-          writer.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
+          if writer:
+            writer.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
           loss.backward()
         xm.optimizer_step(optimizer)
         if fetch_often:
