@@ -75,8 +75,10 @@ class DINOLoss(nn.Module):
         Update center used for teacher output.
         """
         batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
-        dist.all_reduce(batch_center)
-        batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
+        #dist.all_reduce(batch_center)
+        #batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
+        xm.all_reduce(xm.REDUCE_SUM, batch_center)
+        batch_center = batch_center / (len(teacher_output) * xm.xrt_world_size())
 
         # ema update
         self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
@@ -104,7 +106,7 @@ class DINOLoss(nn.Module):
                 total_loss += loss.mean()
                 n_loss_terms += 1
         total_loss /= n_loss_terms
-        #self.update_center(teacher_output)
+        self.update_center(teacher_output)
 
         return total_loss
 
@@ -338,9 +340,9 @@ def train_mnist(flags,
   train_device_loader = pl.MpDeviceLoader(train_loader, device)
   test_device_loader = pl.MpDeviceLoader(test_loader, device)
   accuracy, max_accuracy = 0.0, 0.0
-  for epoch in range(0, flags.num_epochs):
+  for epoch in range(1, flags.num_epochs + 1):
     xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
-    train_loop_fn(train_device_loader, epoch)
+    train_loop_fn(train_device_loader, epoch-1)
     xm.master_print('Epoch {} train end {}'.format(epoch, test_utils.now()))
 
     #accuracy = test_loop_fn(test_device_loader)
