@@ -26,8 +26,8 @@ FLAGS.norm_last_layer=True
 FLAGS.dir_save_logs='/home/jesimonbarreto/log_train'
 FLAGS.saveckp_freq = 5
 FLAGS.output_dir = '/home/jesimonbarreto/log'
-FLAGS.optimizer == "adamw"
-FLAGS.weight_decay == 0.04
+FLAGS.optimizer = "adamw"
+FLAGS.weight_decay = 0.04
 FLAGS.weight_decay_end = 0.4
 FLAGS.clip_grad = 0
 FLAGS.freeze_last_layer = 1
