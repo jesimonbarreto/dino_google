@@ -8,25 +8,40 @@ FLAGS = args_parse.parse_common_options(
     momentum=0.5,
     lr=0.01,
     target_accuracy=98.0,
-    num_epochs=18,
+    num_epochs=800,
     profiler_port=9012)
 
-FLAGS.arch = 'vit_tiny'
-FLAGS.patch_size = 8
+FLAGS.arch = 'vit_small'
+FLAGS.patch_size = 16
 FLAGS.drop_path_rate = 0.1
 FLAGS.out_dim=65536
-FLAGS.local_crops_number=8
+FLAGS.local_crops_number=10
 FLAGS.warmup_teacher_temp=0.04
-FLAGS.teacher_temp=0.04
-FLAGS.warmup_teacher_temp_epochs=0
-FLAGS.global_crops_scale=(0.4, 1.)
-FLAGS.local_crops_scale=(0.05, 0.4)
+FLAGS.teacher_temp=0.07
+FLAGS.warmup_teacher_temp_epochs=30
+FLAGS.global_crops_scale=(0.25, 1.)
+FLAGS.local_crops_scale=(0.05, 0.25)
 FLAGS.use_bn_in_head=False
 FLAGS.norm_last_layer=True
 FLAGS.dir_save_logs='/home/jesimonbarreto/log_train'
 FLAGS.saveckp_freq = 5
 FLAGS.output_dir = '/home/jesimonbarreto/log'
 FLAGS.optimizer == "adamw"
+FLAGS.weight_decay == 0.04
+FLAGS.weight_decay_end = 0.4
+FLAGS.clip_grad = 0
+FLAGS.freeze_last_layer = 1
+FLAGS.lr = 0.0005
+FLAGS.warmup_epochs = 10
+FLAGS.min_lr = 0.00001
+FLAGS.seed = 0
+FLAGS.num_workers = 10
+FLAGS.ngpus = 8
+FLAGS.nodes = 2
+FLAGS.momentum_teacher = 0.996
+FLAGS.drop_path_rate = 0.1
+
+
 
 import torch_xla
 import torch_xla.debug.metrics as met
@@ -203,7 +218,7 @@ def train_mnist(flags,
                 training_started=None,
                 dynamic_graph=False,
                 fetch_often=False):
-  torch.manual_seed(1)
+  torch.manual_seed(0)
   #import torch_xla.experimental.pjrt_backend
   #dist.init_process_group('xla', init_method='pjrt://')
   if flags.fake_data:
