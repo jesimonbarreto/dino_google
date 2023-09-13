@@ -3,6 +3,7 @@ import args_parse
 
 FLAGS = args_parse.parse_common_options(
     datadir='/tmp/cifar10-data',
+    logdir='/home/jesimonbarreto/log/',
     batch_size=1,
     momentum=0.5,
     lr=0.01,
@@ -22,7 +23,10 @@ FLAGS.global_crops_scale=(0.4, 1.)
 FLAGS.local_crops_scale=(0.05, 0.4)
 FLAGS.use_bn_in_head=False
 FLAGS.norm_last_layer=True
-FLAGS.dir_save_logs='/home/jesimonbarreto/log_train/'
+FLAGS.dir_save_logs='/home/jesimonbarreto/log_train'
+FLAGS.saveckp_freq = 5
+FLAGS.output_dir = '/home/jesimonbarreto/log'
+FLAGS.optimizer == "adamw"
 
 import torch_xla
 import torch_xla.debug.metrics as met
@@ -44,11 +48,11 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 from torch.utils.tensorboard import SummaryWriter
-import utils
+import utils, time, datetime
 import vision_transformer as vits
 from vision_transformer import DINOHead
 
-writer = SummaryWriter(FLAGS.dir_save_logs)
+writertb = SummaryWriter(FLAGS.dir_save_logs)
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -272,11 +276,36 @@ def train_mnist(flags,
   student.to(device)
   teacher.to(device)
   
+  # synchronize batch norms (if any)
+  if utils.has_batchnorms(student):
+      student = nn.SyncBatchNorm.convert_sync_batchnorm(student)
+      teacher = nn.SyncBatchNorm.convert_sync_batchnorm(teacher)
+
+      # we need DDP wrapper to have synchro batch norms working...
+      teacher = nn.parallel.DistributedDataParallel(teacher, device_ids=[args.gpu])
+      teacher_without_ddp = teacher.module
+  else:
+      # teacher_without_ddp and teacher are the same thing
+      teacher_without_ddp = teacher
+  
+  teacher_without_ddp.load_state_dict(student.module.state_dict())
+  # there is no backpropagation through the teacher, so no need for gradients
+  for p in teacher.parameters():
+      p.requires_grad = False
+  print(f"Student and Teacher are built: they are both {flags.arch} network.")
+  
   
   writer = None
   if xm.is_master_ordinal():
     writer = test_utils.get_summary_writer(flags.logdir)
-  optimizer = optim.SGD(student.parameters(), lr=lr, momentum=flags.momentum)
+  
+  params_groups = utils.get_params_groups(student)
+  if flags.optimizer == "adamw":
+      optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
+  elif flags.optimizer == "sgd":
+      optimizer = torch.optim.SGD(params_groups, lr=0, momentum=0.9)  # lr is set by scheduler
+  elif flags.optimizer == "lars":
+      optimizer = utils.LARS(params_groups)  # to use with convnet and large batches
   
   dino_loss = DINOLoss(
         FLAGS.out_dim,
@@ -286,6 +315,23 @@ def train_mnist(flags,
         FLAGS.warmup_teacher_temp_epochs,
         FLAGS.num_epochs,
   )
+  lr_schedule = utils.cosine_scheduler(
+        flags.lr * (flags.batch_size_per_gpu * xm.xrt_world_size()) / 256.,  # linear scaling rule
+        flags.min_lr,
+        flags.epochs, len(train_loader),
+        warmup_epochs=flags.warmup_epochs,
+    )
+  wd_schedule = utils.cosine_scheduler(
+        flags.weight_decay,
+        flags.weight_decay_end,
+        flags.epochs, len(train_loader),
+    )
+    # momentum parameter is increased to 1. during training with a cosine schedule
+  momentum_schedule = utils.cosine_scheduler(flags.momentum_teacher, 1,
+                                               flags.epochs, len(train_loader))
+  print(f"Loss, optimizer and schedulers ready.")
+
+
 
   server = xp.start_server(flags.profiler_port)
 
@@ -297,14 +343,32 @@ def train_mnist(flags,
       print('size data {}'.format(len(data)))
       with xp.StepTrace('train_mnist', step_num=step):
         with xp.Trace('build_graph'):
-          optimizer.zero_grad()
+          
+          for i, param_group in enumerate(optimizer.param_groups):
+            param_group["lr"] = lr_schedule[step]
+            if i == 0:  # only the first group is regularized
+                param_group["weight_decay"] = wd_schedule[step]
+          
           s_out = student(data)
           t_out = teacher(data[:2])
           loss = dino_loss(s_out, t_out, epoch)
-          if writer:
-            writer.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
+          
+          if writertb:
+            writertb.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
+          
+          optimizer.zero_grad()
+          param_norms = None
+          if flags.clip_grad:
+            param_norms = utils.clip_gradients(student, flags.clip_grad)
+          utils.cancel_gradients_last_layer(epoch, student,
+                                              flags.freeze_last_layer)
           loss.backward()
         xm.optimizer_step(optimizer)
+        # EMA update for the teacher
+        with torch.no_grad():
+          m = momentum_schedule[step]  # momentum parameter
+          for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
+                param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
         if fetch_often:
           # testing purpose only: fetch XLA tensors to CPU.
           loss_i = loss.item()
@@ -312,6 +376,10 @@ def train_mnist(flags,
         if step % flags.log_steps == 0:
           xm.add_step_closure(
               _train_update, args=(device, step, loss, tracker, writer))
+          
+        print(loss.item())
+        print(optimizer.param_groups[0]["lr"])
+        print(optimizer.param_groups[0]["weight_decay"])
 
   def test_loop_fn(loader):
     total_samples = 0
@@ -329,7 +397,8 @@ def train_mnist(flags,
     return accuracy
 
   train_device_loader = pl.MpDeviceLoader(train_loader, device)
-  #test_device_loader = pl.MpDeviceLoader(test_loader, device)
+  
+  start_time = time.time()
   accuracy, max_accuracy = 0.0, 0.0
   for epoch in range(1, flags.num_epochs + 1):
     xm.master_print('Epoch {} train begin {}'.format(epoch, test_utils.now()))
@@ -348,6 +417,29 @@ def train_mnist(flags,
         write_xla_metrics=True)
     if flags.metrics_debug:
       xm.master_print(met.metrics_report())
+    
+    # ============ writing logs ... ============
+    save_dict = {
+        'student': student.state_dict(),
+        'teacher': teacher.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'epoch': epoch + 1,
+        'args': flags,
+        'dino_loss': dino_loss.state_dict(),
+        'debug_metrics': met.metrics_report()
+    }
+    
+    utils.save_on_master(save_dict, os.path.join(flags.output_dir, 'checkpoint.pth'))
+    if flags.saveckp_freq and epoch % flags.saveckp_freq == 0:
+        utils.save_on_master(save_dict, os.path.join(flags.output_dir, f'checkpoint{epoch:04}.pth'))
+        xm.save(teacher.state_dict(), os.path.join(flags.output_dir))
+        xm.save(student.state_dict(), os.path.join(flags.output_dir))
+
+
+    
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print('Training time {}'.format(total_time_str))
 
   test_utils.close_summary_writer(writer)
   xm.master_print('Max Accuracy: {:.2f}%'.format(max_accuracy))
@@ -363,8 +455,8 @@ def _mp_fn(rank, flags):
   #      backend='nccl', world_size=1, init_method='env://',
   #      rank=rank)
   accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
-  writer.flush()
-  writer.close()
+  writertb.flush()
+  writertb.close()
   if flags.tidy and os.path.isdir(flags.datadir):
     shutil.rmtree(flags.datadir)
   if accuracy < flags.target_accuracy:
