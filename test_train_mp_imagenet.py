@@ -331,7 +331,7 @@ def train_mnist(flags,
         FLAGS.num_epochs,
   )
   lr_schedule = utils.cosine_scheduler(
-        flags.lr * (flags.batch_size_per_gpu * xm.xrt_world_size()) / 256.,  # linear scaling rule
+        flags.lr * (flags.batch_size * xm.xrt_world_size()) / 256.,  # linear scaling rule
         flags.min_lr,
         flags.epochs, len(train_loader),
         warmup_epochs=flags.warmup_epochs,
