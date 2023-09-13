@@ -303,7 +303,7 @@ def train_mnist(flags,
       # teacher_without_ddp and teacher are the same thing
       teacher_without_ddp = teacher
   
-  teacher_without_ddp.load_state_dict(student.module.state_dict())
+  teacher_without_ddp.load_state_dict(student.state_dict())
   # there is no backpropagation through the teacher, so no need for gradients
   for p in teacher.parameters():
       p.requires_grad = False
