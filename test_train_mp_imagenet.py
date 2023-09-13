@@ -40,7 +40,7 @@ FLAGS.ngpus = 8
 FLAGS.nodes = 2
 FLAGS.momentum_teacher = 0.996
 FLAGS.drop_path_rate = 0.1
-
+FLAGS.epochs = FLAGS.num_epochs
 
 
 import torch_xla
@@ -333,17 +333,17 @@ def train_mnist(flags,
   lr_schedule = utils.cosine_scheduler(
         flags.lr * (flags.batch_size * xm.xrt_world_size()) / 256.,  # linear scaling rule
         flags.min_lr,
-        flags.epochs, len(train_loader),
+        flags.num_epochs, len(train_loader),
         warmup_epochs=flags.warmup_epochs,
     )
   wd_schedule = utils.cosine_scheduler(
         flags.weight_decay,
         flags.weight_decay_end,
-        flags.epochs, len(train_loader),
+        flags.num_epochs, len(train_loader),
     )
     # momentum parameter is increased to 1. during training with a cosine schedule
   momentum_schedule = utils.cosine_scheduler(flags.momentum_teacher, 1,
-                                               flags.epochs, len(train_loader))
+                                               flags.num_epochs, len(train_loader))
   print(f"Loss, optimizer and schedulers ready.")
 
 
