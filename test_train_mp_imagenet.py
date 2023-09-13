@@ -369,7 +369,7 @@ def train_mnist(flags,
           loss = dino_loss(s_out, t_out, epoch)
           
           if writertb:
-            writertb.add_scalar(f'Loss/train',{'Loss/train': loss.item()}, step)
+            writertb.add_scalar(f'Loss/train',loss.item(), step)
           
           optimizer.zero_grad()
           param_norms = None
