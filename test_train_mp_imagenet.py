@@ -382,7 +382,7 @@ def train_mnist(flags,
         # EMA update for the teacher
         with torch.no_grad():
           m = momentum_schedule[step]  # momentum parameter
-          for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
+          for param_q, param_k in zip(student.parameters(), teacher_without_ddp.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
         if fetch_often:
           # testing purpose only: fetch XLA tensors to CPU.
