@@ -17,7 +17,7 @@ FLAGS.drop_path_rate = 0.1
 FLAGS.out_dim=65536
 FLAGS.local_crops_number=10
 FLAGS.warmup_teacher_temp=0.04
-FLAGS.teacher_temp=0.07
+FLAGS.teacher_temp=0.07math
 FLAGS.warmup_teacher_temp_epochs=30
 FLAGS.global_crops_scale=(0.25, 1.)
 FLAGS.local_crops_scale=(0.05, 0.25)
@@ -51,7 +51,7 @@ import torch_xla.core.xla_model as xm
 import torch_xla.debug.profiler as xp
 import torch_xla.distributed.xla_multiprocessing as xmp
 import torch_xla.test.test_utils as test_utils
-import os
+import os, math
 import shutil
 import sys
 import numpy as np
@@ -179,31 +179,6 @@ class DataAugmentationDINO(object):
             crops.append(self.local_transfo(image))
         return crops
 
-class MNIST(nn.Module):
-
-  def __init__(self):
-    super(MNIST, self).__init__()
-    self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-    self.bn1 = nn.BatchNorm2d(10)
-    self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-    self.bn2 = nn.BatchNorm2d(20)
-    self.fc1 = nn.Linear(320, 50)
-    self.fc2 = nn.Linear(50, 10)
-
-  def forward(self, x):
-    with xp.Trace('conv1'):
-      x = F.relu(F.max_pool2d(self.conv1(x), 2))
-      x = self.bn1(x)
-    with xp.Trace('conv2'):
-      x = F.relu(F.max_pool2d(self.conv2(x), 2))
-      x = self.bn2(x)
-    with xp.Trace('dense'):
-      x = torch.flatten(x, 1)
-      x = F.relu(self.fc1(x))
-      x = self.fc2(x)
-    return F.log_softmax(x, dim=1)
-
-
 def _train_update(device, x, loss, tracker, writer):
   test_utils.print_training_update(
       device,
@@ -214,7 +189,7 @@ def _train_update(device, x, loss, tracker, writer):
       summary_writer=writer)
 
 
-def train_mnist(flags,
+def train_model(flags,
                 training_started=None,
                 dynamic_graph=False,
                 fetch_often=False):
@@ -370,7 +345,14 @@ def train_mnist(flags,
           
           if writertb:
             writertb.add_scalar(f'Loss/train',loss.item(), step)
+            writertb.add_scalar(f'Optimizer/train',optimizer.item(), step)
+            writertb.add_scalar(f'lr/train',optimizer.param_groups[0]["lr"], step)
+            writertb.add_scalar(f'weight_decay/train',optimizer.param_groups[0]["weight_decay"], step)
           
+          if not math.isfinite(loss.item()):
+            print("Loss is {}, stopping training".format(loss.item()), force=True)
+            sys.exit(1)
+
           optimizer.zero_grad()
           param_norms = None
           if flags.clip_grad:
@@ -392,9 +374,9 @@ def train_mnist(flags,
           xm.add_step_closure(
               _train_update, args=(device, step, loss, tracker, writer))
           
-        print(loss.item())
-        print(optimizer.param_groups[0]["lr"])
-        print(optimizer.param_groups[0]["weight_decay"])
+        #print(loss.item())
+        #print(optimizer.param_groups[0]["lr"])
+        #print(optimizer.param_groups[0]["weight_decay"])
 
   def test_loop_fn(loader):
     total_samples = 0
@@ -447,8 +429,8 @@ def train_mnist(flags,
     utils.save_on_master(save_dict, os.path.join(flags.output_dir, 'checkpoint.pth'))
     if flags.saveckp_freq and epoch % flags.saveckp_freq == 0:
         utils.save_on_master(save_dict, os.path.join(flags.output_dir, f'checkpoint{epoch:04}.pth'))
-        xm.save(teacher.state_dict(), os.path.join(flags.output_dir))
-        xm.save(student.state_dict(), os.path.join(flags.output_dir))
+        xm.save(teacher.state_dict(), os.path.join(flags.output_dir, f'checkpoint_t{epoch:04}.pth'))
+        xm.save(student.state_dict(), os.path.join(flags.output_dir, f'checkpoint_p{epoch:04}.pth'))
 
 
     
@@ -469,7 +451,7 @@ def _mp_fn(rank, flags):
   #dist.init_process_group(
   #      backend='nccl', world_size=1, init_method='env://',
   #      rank=rank)
-  accuracy = train_mnist(flags, dynamic_graph=True, fetch_often=True)
+  accuracy = train_model(flags, dynamic_graph=True, fetch_often=True)
   writertb.flush()
   writertb.close()
   if flags.tidy and os.path.isdir(flags.datadir):
